@@ -3,15 +3,19 @@
 Production-grade data collection pipeline for the **AQI Prediction System**,
 built for the **10Pearls Shine Data Sciences Internship**.
 
-This phase implements **only** the ingestion pipeline: automatically fetching
-weather and air-quality data from external APIs, validating it, and persisting
-raw data, processed data, and per-run metadata to disk. No machine learning,
-feature engineering, or serving layer is included in this phase — those
-belong to later phases of the project.
+Phase 1 implements the ingestion pipeline: automatically fetching weather
+and air-quality data from external APIs, validating it, and persisting raw
+data, processed data, and per-run metadata to disk. Phase 2 (this README)
+adds a feature-engineering step on top of that data. Model training, a
+feature store, and a serving layer are not included yet — those belong to
+later phases of the project.
 
-**Status: Phase 1 complete and validated.** 100 automated tests pass, covering
-every fetcher stage, every failure mode, configuration validation, and
-end-to-end orchestration (see [Section 8](#8-testing--validated-scenarios)).
+**Status: Phase 1 complete and validated** (100 automated tests pass,
+covering every fetcher stage, every failure mode, configuration validation,
+and end-to-end orchestration — see
+[Section 8](#8-testing--validated-scenarios)). **Phase 2 (feature
+engineering) complete and validated** against the real Sukkur dataset — see
+[Section 12](#12-phase-2--feature-engineering).
 
 ---
 
@@ -28,7 +32,8 @@ end-to-end orchestration (see [Section 8](#8-testing--validated-scenarios)).
 9. [Run Metadata](#9-run-metadata)
 10. [Design Notes](#10-design-notes)
 11. [Historical Data Providers](#11-historical-data-providers)
-12. [Out of Scope for Phase 1](#12-out-of-scope-for-phase-1)
+12. [Phase 2 — Feature Engineering](#12-phase-2--feature-engineering)
+13. [Out of Scope (Later Phases)](#13-out-of-scope-later-phases)
 
 ---
 
@@ -133,14 +138,23 @@ so every ingestion run leaves an auditable trail.
 
 ## 3. Folder Structure
 
+> **Note:** `data/raw/`, `data/processed/`, and `data/metadata/` are
+> git-ignored by design (see `.gitignore`) — these directories contain
+> generated, runtime output that can be reproduced by running the pipeline
+> scripts documented in [Section 6](#6-how-to-run). This keeps the
+> repository lightweight and avoids committing large or stale datasets.
+> Folder structure is preserved via `.gitkeep` placeholders, and real
+> sample output is shown in [Section 7](#7-sample-output) so the pipeline's
+> behavior is visible without needing the data files themselves in the repo.
+
 ```
 pearls-aqi-predictor/
 ├── configs/
 │   └── config.py                  # Centralized, validated configuration loader
 ├── data/
-│   ├── raw/                       # Raw JSON API responses (one file per run)
-│   ├── processed/                 # Processed CSV dataset (appended each run)
-│   └── metadata/                  # Per-run metadata JSON (status, sources, errors)
+│   ├── raw/                       # Raw JSON API responses (one file per run, git-ignored)
+│   ├── processed/                 # Processed CSV dataset (appended each run, git-ignored)
+│   └── metadata/                  # Per-run metadata JSON (status, sources, errors, git-ignored)
 ├── logs/
 │   └── pipeline.log               # Rotating log file (console output is mirrored here)
 ├── src/
@@ -571,10 +585,11 @@ data/processed/aqi_dataset_historical.csv
 
 The live and historical pipelines converge on the **same feature pipeline**
 (`process_features`), so all downstream processing — validation, storage,
-metadata — is identical regardless of data source. Later project phases
-will read from these processed CSVs to build a feature store (Hopsworks),
-train models, and serve predictions — none of that is implemented yet (see
-[Section 12](#12-out-of-scope-for-phase-1)).
+metadata — is identical regardless of data source. Phase 2 builds directly
+on top of this output (see [Section 12](#12-phase-2--feature-engineering)).
+Later phases will push the engineered features into a feature store
+(Hopsworks), train models, and serve predictions — none of that is
+implemented yet (see [Section 13](#13-out-of-scope-later-phases)).
 
 ### What stays the same
 
@@ -623,14 +638,73 @@ This distinction is visible in both the console log output and the
 
 ---
 
-## 12. Out of Scope for Phase 1
+## 12. Phase 2 — Feature Engineering
 
-The following are intentionally **not** implemented yet, and belong to later
-phases of the project:
+`src/feature_pipeline/feature_engineering.py` builds a training-ready
+dataset from the Phase 1 processed CSV. Run with:
 
-- Feature engineering (time features, cyclic features, lag/rolling features,
-  weather-change deltas, composite pollution indices, target variable)
-- Machine learning model training
-- Feature store (Hopsworks) / model registry / SHAP explainability
-- Flask / Streamlit serving layer
+```bash
+python -m src.feature_pipeline.feature_engineering
+```
+
+This reads `data/processed/aqi_dataset_historical.csv`, and writes
+`data/processed/feature_df.csv` (also git-ignored, like the rest of `data/`
+— see [Section 3](#3-folder-structure)).
+
+**Features generated (all computed per-city, on a deduplicated,
+chronologically-sorted series, so nothing leaks across city boundaries or
+out-of-order backfill runs):**
+
+- **Time features** — `hour`, `day_of_week`, `day_of_month`, `month`, plus
+  cyclical `sin`/`cos` encodings of each, so e.g. hour 23 and hour 0 are
+  close in feature space rather than maximally far apart.
+- **Lag features** — the previous 1-2 readings for AQI and key
+  pollutants/weather fields (`aqi`, `pm2_5`, `pm10`, `temperature`,
+  `humidity`).
+- **Rolling averages** — 24h and 48h rolling mean/std for `aqi`, `pm2_5`,
+  and `pm10`.
+- **AQI change rate** — first difference from the previous reading, for
+  the same set of columns as the lag features.
+- **Pollution index** — a simple composite score (`pollution_index`)
+  averaging each available pollutant's ratio to its EPA "Moderate"
+  breakpoint threshold. This is distinct from the official EPA `aqi`
+  column already in the dataset (which is the *max* of pollutant
+  sub-indices) — see the function docstring in `feature_engineering.py`
+  for the exact method and its limitations.
+- **Target variable** — `aqi_target`: the AQI value 24 intervals ahead
+  (3 days, at the pipeline's 3-hour interval), configurable via
+  `--horizon-steps`.
+
+**Handling missing pollutants:** not every monitoring source measures every
+pollutant (e.g. Sukkur's nearest station only reports AQI + PM2.5, so
+`pm10`/`co`/`so2`/`no2`/`o3` are `null` in the raw data — see
+[Section 10](#10-design-notes)). Rather than requiring completeness on a
+derived column that can *never* be non-null for such a location (which
+would silently drop the entire dataset), the script detects and excludes
+any derived column with no real data anywhere in the dataset from the
+row-completeness check, logging a warning naming exactly which columns were
+skipped and why.
+
+Rows lacking full lag/rolling/target history (each city's first few rows
+and last `horizon_steps` rows) are dropped by default, leaving a dataset
+immediately usable for model training. Pass `--keep-incomplete-rows` to
+keep them instead (e.g. for custom imputation).
+
+**Validated on the real Sukkur dataset:** 1,962 input rows → 1,936
+output rows, 62 columns, after correctly excluding `pm10`'s
+always-missing derived columns from the completeness check.
+
+---
+
+## 13. Out of Scope (Later Phases)
+
+The following are intentionally **not** implemented yet, and belong to
+later phases of the project:
+
+- Feature store (Hopsworks) / model registry
+- Machine learning model training (Ridge Regression, Random Forest,
+  Gradient Boosting, TensorFlow)
+- SHAP explainability
+- Flask API / Streamlit serving layer
 - CI/CD automation (GitHub Actions)
+- Hazard-level alerting

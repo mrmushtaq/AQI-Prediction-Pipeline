@@ -18,6 +18,7 @@ data/metadata/*
 !data/processed/.gitkeep
 !data/metadata/.gitkeep
 logs/*.log
+logs/*.log.*
 
 # OS/IDE
 .DS_Store
