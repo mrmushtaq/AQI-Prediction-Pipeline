@@ -143,3 +143,37 @@ def load_settings() -> Settings:
         longitude=longitude,
         log_level=log_level or "INFO",
     )
+
+@dataclass(frozen=True)
+class HopsworksSettings:
+    """Configuration needed to connect to a Hopsworks Feature Store.
+
+    Kept as a separate, standalone settings object (rather than folded into
+    `Settings`) so that the existing live/historical ingestion pipelines --
+    and every test that constructs a `Settings` -- are completely unaffected
+    by Phase 3. Hopsworks credentials are only required when actually running
+    the feature-store sync (`src.feature_pipeline.feature_store`).
+
+    Attributes:
+        api_key: Hopsworks API key (Account Settings -> API Keys on
+            https://app.hopsworks.ai).
+        project_name: Name of the Hopsworks project to connect to.
+    """
+
+    api_key: str
+    project_name: str
+
+
+def load_hopsworks_settings() -> HopsworksSettings:
+    """Load and validate Hopsworks connection settings from the environment.
+
+    Returns:
+        A populated `HopsworksSettings` instance.
+
+    Raises:
+        ConfigurationError: If `HOPSWORKS_API_KEY` or `HOPSWORKS_PROJECT_NAME`
+            is missing or empty.
+    """
+    api_key = _get_env("HOPSWORKS_API_KEY")
+    project_name = _get_env("HOPSWORKS_PROJECT_NAME")
+    return HopsworksSettings(api_key=api_key, project_name=project_name)

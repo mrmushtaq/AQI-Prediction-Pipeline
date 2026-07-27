@@ -59,3 +59,9 @@ class PipelineError(AQIPipelineError):
     (e.g. the feature pipeline itself, historical backfill, or live
     pipeline encounters an unrecoverable error).
     """
+
+class FeatureStoreError(PipelineError):
+    """Raised when a Hopsworks Feature Store operation fails: login,
+    feature group creation/retrieval, feature insertion, or reading
+    features back.
+    """

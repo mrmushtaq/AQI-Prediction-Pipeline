@@ -1,21 +1,25 @@
-# Pearls AQI Predictor — Phase 1: Data Ingestion Pipeline
+# Pearls AQI Predictor — AQI Prediction System
 
-Production-grade data collection pipeline for the **AQI Prediction System**,
-built for the **10Pearls Shine Data Sciences Internship**.
+Production-grade data pipeline for the **AQI Prediction System**, built for
+the **10Pearls Shine Data Sciences Internship**.
 
 Phase 1 implements the ingestion pipeline: automatically fetching weather
 and air-quality data from external APIs, validating it, and persisting raw
-data, processed data, and per-run metadata to disk. Phase 2 (this README)
-adds a feature-engineering step on top of that data. Model training, a
-feature store, and a serving layer are not included yet — those belong to
-later phases of the project.
+data, processed data, and per-run metadata to disk. Phase 2 adds a
+feature-engineering step on top of that data. Phase 3 pushes the engineered
+features into a **Hopsworks Feature Store** (login, create feature group,
+insert, read back), making them available for training-time and future
+online consumption. Model training and a serving layer are not included yet
+— those belong to later phases of the project.
 
 **Status: Phase 1 complete and validated** (100 automated tests pass,
 covering every fetcher stage, every failure mode, configuration validation,
 and end-to-end orchestration — see
 [Section 8](#8-testing--validated-scenarios)). **Phase 2 (feature
 engineering) complete and validated** against the real Sukkur dataset — see
-[Section 12](#12-phase-2--feature-engineering).
+[Section 12](#12-phase-2--feature-engineering). **Phase 3 (Hopsworks
+Feature Store) complete and validated** — 1,936 rows inserted and read back
+successfully — see [Section 13](#13-phase-3--hopsworks-feature-store).
 
 ---
 
@@ -33,7 +37,8 @@ engineering) complete and validated** against the real Sukkur dataset — see
 10. [Design Notes](#10-design-notes)
 11. [Historical Data Providers](#11-historical-data-providers)
 12. [Phase 2 — Feature Engineering](#12-phase-2--feature-engineering)
-13. [Out of Scope (Later Phases)](#13-out-of-scope-later-phases)
+13. [Phase 3 — Hopsworks Feature Store](#13-phase-3--hopsworks-feature-store)
+14. [Out of Scope (Later Phases)](#14-out-of-scope-later-phases)
 
 ---
 
@@ -131,8 +136,10 @@ so every ingestion run leaves an auditable trail.
 > **Note on future phases:** later phases of this project (feature
 > engineering, model training, Hopsworks feature store, serving layer) will
 > sit *downstream* of this pipeline's `data/processed/` output. They are not
-> part of Phase 1 and are not implemented yet — see
-> [Section 12](#12-out-of-scope-for-phase-1).
+> part of Phase 1. Phase 3 (Hopsworks Feature Store) is now implemented —
+> see [Section 13](#13-phase-3--hopsworks-feature-store) — but model
+> training and serving are not yet — see
+> [Section 14](#14-out-of-scope-later-phases).
 
 ---
 
@@ -151,6 +158,8 @@ so every ingestion run leaves an auditable trail.
 pearls-aqi-predictor/
 ├── configs/
 │   └── config.py                  # Centralized, validated configuration loader
+├── notebooks/
+│   └── phase3_hopsworks_feature_store.ipynb  # Colab notebook: Phase 3 walkthrough
 ├── data/
 │   ├── raw/                       # Raw JSON API responses (one file per run, git-ignored)
 │   ├── processed/                 # Processed CSV dataset (appended each run, git-ignored)
@@ -163,6 +172,7 @@ pearls-aqi-predictor/
 │   │   ├── fetch_air_quality.py   # Live: 3-stage AQICN/OpenWeather fallback. Historical: OpenAQ v3
 │   │   ├── feature_pipeline.py    # Shared merge_weather_and_aqi() + validate_record() logic
 │   │   ├── historical_backfill.py # Orchestrates backfill over a date range
+│   │   ├── feature_store.py       # Phase 3: Hopsworks login/create/insert/read
 │   │   ├── live_pipeline.py       # Orchestrates a single current-time run
 │   │   └── run_pipeline.py        # CLI entry point for a single live run + metadata
 │   ├── utils/
@@ -181,7 +191,8 @@ pearls-aqi-predictor/
 │   ├── test_feature_pipeline.py    # Merge + validation logic
 │   ├── test_historical_backfill.py # Dedup, incremental writes, metadata, --force
 │   ├── test_live_pipeline.py       # Live pipeline end-to-end
-│   └── test_run_pipeline.py        # Metadata on success/failure, e2e run
+│   ├── test_run_pipeline.py        # Metadata on success/failure, e2e run
+│   └── test_feature_store.py       # Phase 3: login/create/insert/read, hopsworks + hsfs fallback (mocked)
 ├── requirements.txt
 ├── .env.example
 ├── pytest.ini
@@ -230,6 +241,8 @@ pip install -r requirements.txt
 | `REQUEST_TIMEOUT_SECONDS`   | Per-request timeout in seconds (default: `10`)                   |
 | `MAX_RETRIES`               | Retry attempts per API call (default: `3`)                       |
 | `RETRY_BACKOFF_SECONDS`     | Base backoff between retries; grows **exponentially** as `base * 2^(attempt-1)` (default base: `2`, i.e. 2s, 4s, 8s...) |
+| `HOPSWORKS_API_KEY`         | Hopsworks API key (Account Settings → API Keys on https://app.hopsworks.ai). Required only for Phase 3 (`feature_store.py`). |
+| `HOPSWORKS_PROJECT_NAME`    | Name of your Hopsworks project. Required only for Phase 3. |
 
    `.env` is git-ignored — never commit real credentials. If any required
    variable is missing, empty, or an invalid lat/lon, the pipeline raises a
@@ -282,6 +295,23 @@ python -m src.feature_pipeline.historical_backfill 2025-11-21 2026-07-26 --force
 > **Note:** `--force` appends fresh rows rather than replacing existing ones,
 > since storage is append-only. Only use it if you're prepared to
 > deduplicate afterward.
+
+### Feature engineering (Phase 2)
+
+```bash
+python -m src.feature_pipeline.feature_engineering
+```
+
+See [Section 12](#12-phase-2--feature-engineering) for details.
+
+### Hopsworks Feature Store sync (Phase 3)
+
+```bash
+python -m src.feature_pipeline.feature_store
+```
+
+See [Section 13](#13-phase-3--hopsworks-feature-store) for details, setup,
+and a Windows-specific installation note.
 
 ---
 
@@ -362,7 +392,7 @@ to Sukkur only has AQI + PM2.5 sensors. This is expected and handled: see
 ## 8. Testing & Validated Scenarios
 
 ```bash
-pytest            # run all 100 tests
+pytest            # run all tests
 pytest -v         # verbose, one line per test
 ```
 
@@ -387,6 +417,10 @@ needed to run the suite. The following scenarios are explicitly covered:
 | Historical backfill `--force`        | Bypasses dedup, re-fetches requested range | `test_historical_backfill.py` |
 | Pipeline succeeds end-to-end         | Metadata `status=SUCCESS`, CSV row written | `test_run_pipeline_success_writes_success_metadata` |
 | Pipeline fails at any stage          | Metadata `status=FAILED` with error + partial context, exception still propagates | `test_run_pipeline_failure_still_writes_failed_metadata`, `test_run_pipeline_validation_failure_writes_failed_metadata` |
+| Hopsworks login (full SDK)           | Returns a feature store handle | `test_login_success_returns_feature_store_handle` |
+| Hopsworks login fallback (`hsfs` only) | Falls back transparently, same result | `test_login_falls_back_to_hsfs_when_hopsworks_not_installed` |
+| Neither `hopsworks` nor `hsfs` installed | Clear `FeatureStoreError` with install instructions | `test_login_raises_when_neither_hopsworks_nor_hsfs_installed` |
+| Feature group create/insert/read     | Correct schema, round-trip data integrity | `test_get_or_create_feature_group_uses_expected_schema`, `test_sync_feature_store_end_to_end` |
 
 **Manually verified against live APIs** (not mocked) for **Sukkur**
 (`27.7052, 68.8574`): a successful live end-to-end run producing real weather
@@ -394,7 +428,9 @@ needed to run the suite. The following scenarios are explicitly covered:
 covering the range the AQI sensor was actually active for (see
 [Section 11](#11-historical-data-providers) below). The AQICN city→geo
 fallback was also observed triggering correctly on Sukkur's unrecognized
-city string in both the live run and earlier debugging sessions.
+city string in both the live run and earlier debugging sessions. **Phase 3
+was manually verified against a real Hopsworks project** — see
+[Section 13](#13-phase-3--hopsworks-feature-store) for the validated run.
 
 ---
 
@@ -587,9 +623,10 @@ The live and historical pipelines converge on the **same feature pipeline**
 (`process_features`), so all downstream processing — validation, storage,
 metadata — is identical regardless of data source. Phase 2 builds directly
 on top of this output (see [Section 12](#12-phase-2--feature-engineering)).
-Later phases will push the engineered features into a feature store
-(Hopsworks), train models, and serve predictions — none of that is
-implemented yet (see [Section 13](#13-out-of-scope-later-phases)).
+Phase 3 pushes these engineered features into a Hopsworks feature store
+(see [Section 13](#13-phase-3--hopsworks-feature-store)); model training and
+serving are not implemented yet (see
+[Section 14](#14-out-of-scope-later-phases)).
 
 ### What stays the same
 
@@ -696,12 +733,133 @@ always-missing derived columns from the completeness check.
 
 ---
 
-## 13. Out of Scope (Later Phases)
+## 13. Phase 3 — Hopsworks Feature Store
+
+`src/feature_pipeline/feature_store.py` connects the Phase 2 output
+(`feature_df.csv`) to a Hopsworks Feature Store:
+
+```
+feature_df.csv
+      │
+      ▼
+  login()                     -- hopsworks.login() or hsfs.connection() fallback
+      │
+      ▼
+  get_or_create_feature_group() -- name="aqi_features", v1
+      │                           primary_key=["city", "collection_timestamp"]
+      │                           event_time="collection_timestamp"
+      ▼
+  insert_features()           -- writes to the offline (Hudi) store
+      │
+      ▼
+  read_features()             -- confirms the round trip
+```
+
+### Feature Group Schema
+
+| Setting | Value |
+|---|---|
+| Name | `aqi_features` |
+| Version | `1` |
+| Primary key | `city`, `collection_timestamp` |
+| Event time | `collection_timestamp` |
+| Time travel format | `HUDI` |
+| Online store | Disabled (offline/batch only — sufficient for model training) |
+
+`collection_timestamp` (the pipeline's normalized, idempotency-safe
+timestamp — see [Section 10](#10-design-notes)) is used as both the event
+time and half the primary key, since it uniquely identifies one observation
+per city. The redundant `timestamp` column (always identical to
+`collection_timestamp`) is dropped before insert.
+
+### Setup
+
+1. Create a free account/project at https://app.hopsworks.ai.
+2. Generate an API key: Account Settings → API Keys.
+3. Add to `.env`:
+
+   ```
+   HOPSWORKS_API_KEY=your_api_key_here
+   HOPSWORKS_PROJECT_NAME=your_project_name_here
+   ```
+
+4. Install a client library. Two options:
+   - `pip install hopsworks` (full SDK)
+   - `pip install "hsfs[python]"` (lighter — Feature Store only)
+
+   Both also require `pip install confluent-kafka` (used by `insert()` to
+   stream writes to the feature group).
+
+   **Windows note:** both `hopsworks` and `hsfs` pull in a `twofish` C
+   extension (used only for on-prem Hive/Kafka storage connectors this
+   project doesn't need) that requires Microsoft C++ Build Tools to
+   compile, and there is no prebuilt wheel for it on PyPI. If installing
+   those Build Tools isn't practical (e.g. limited disk space), run the
+   sync from a Linux environment instead — **Google Colab works well**,
+   since `twofish` compiles there without issue. See
+   `notebooks/phase3_hopsworks_feature_store.ipynb` for a ready-to-run
+   notebook version of the steps below. `login()` in `feature_store.py`
+   transparently tries the full `hopsworks` package first and falls back
+   to the lighter `hsfs` client if only that's installed, so either
+   install option works with the same code.
+
+### How to Run
+
+```bash
+python -m src.feature_pipeline.feature_store
+```
+
+Or run the equivalent steps interactively in
+`notebooks/phase3_hopsworks_feature_store.ipynb` (recommended on Windows
+without Build Tools — see the setup note above).
+
+### Validated Run
+
+1,936 rows (the full Phase 2 output) were inserted and read back
+successfully against a real Hopsworks project:
+
+```
+Logged in to project, explore it here https://eu-west.cloud.hopsworks.ai:443/p/<project_id>
+Feature Group created successfully.
+Uploading Dataframe: 100.00% |██████████| Rows 1936/1936
+Inserted 1936 rows.
+Read back 1936 rows.
+```
+
+**Note on materialization timing:** after `insert()`, Hopsworks runs an
+asynchronous job (`aqi_features_1_offline_fg_materialization`) that writes
+the Hudi table. Calling `read()` immediately afterward can transiently fail
+with `FeatureStoreException: No hudi properties found for featuregroup: ...
+This usually means that no data has been written yet` if that job hasn't
+finished yet — this is expected, not a bug. Either check the job's status
+in the Hopsworks UI's Jobs tab before reading, or retry `read()` a few times
+with a short delay (the notebook includes a simple retry loop for this).
+
+**Note on time travel format:** the feature group is created with
+`time_travel_format="HUDI"` explicitly. Hopsworks' newer default,
+`"DELTA"`, requires the `delta` library, which isn't installed by default
+in a fresh environment (e.g. Colab) — using `HUDI` avoids that extra
+dependency.
+
+### Testing
+
+```bash
+pytest tests/test_feature_store.py -v
+```
+
+18 tests, all mocking Hopsworks/`hsfs` — no real account or API key
+required to run the suite. Covers: timestamp preparation/validation, login
+(both the `hopsworks` and `hsfs` fallback paths), feature group creation,
+insert, read, and a fully-mocked end-to-end sync.
+
+---
+
+## 14. Out of Scope (Later Phases)
 
 The following are intentionally **not** implemented yet, and belong to
 later phases of the project:
 
-- Feature store (Hopsworks) / model registry
+- Model registry (Hopsworks Model Registry)
 - Machine learning model training (Ridge Regression, Random Forest,
   Gradient Boosting, TensorFlow)
 - SHAP explainability
