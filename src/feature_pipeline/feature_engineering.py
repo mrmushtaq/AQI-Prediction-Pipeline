@@ -37,6 +37,7 @@ Usage::
 
 from __future__ import annotations
 
+from src.feature_pipeline.historical_backfill import HISTORICAL_INTERVAL_HOURS
 import argparse
 import sys
 from pathlib import Path
@@ -52,9 +53,11 @@ logger = get_logger(__name__)
 
 # The pipeline collects data at a fixed 3-hour interval (see
 # HISTORICAL_INTERVAL_HOURS in historical_backfill.py). 24 steps of 3 hours
-# = 72 hours = 3 days, matching the project's "predict AQI 3 days ahead"
-# requirement.
-DEFAULT_HORIZON_STEPS = 24
+# 72 hours = 3 days, matching the project's "predict AQI 3 days ahead"
+# requirement. Computed dynamically from HISTORICAL_INTERVAL_HOURS so this
+# stays correct if the collection interval ever changes.
+_HORIZON_HOURS = 72
+DEFAULT_HORIZON_STEPS = max(1, _HORIZON_HOURS // HISTORICAL_INTERVAL_HOURS)
 
 # Pollutant/weather columns we compute a "change rate" (first difference)
 # for, in addition to AQI itself. Kept to fields that are meaningful as a
@@ -64,10 +67,15 @@ CHANGE_RATE_COLUMNS = ["aqi", "pm2_5", "pm10", "temperature", "humidity"]
 # How many previous readings to include as explicit lag features.
 LAG_STEPS = (1, 2)
 
-# Rolling-window sizes, in number of intervals (at the pipeline's fixed
-# 3-hour interval). 8 steps = 24h, 16 steps = 48h.
-ROLLING_WINDOWS_STEPS = (8, 16)
-ROLLING_WINDOW_LABELS = {8: "24h", 16: "48h"}
+# Rolling-window sizes, in number of intervals. Computed dynamically from
+# HISTORICAL_INTERVAL_HOURS (the pipeline's actual collection interval) so
+# these always represent true 24h/48h windows regardless of what that
+# interval is currently set to.
+_ROLLING_WINDOW_HOURS = (24, 48)
+ROLLING_WINDOWS_STEPS = tuple(
+    max(1, hours // HISTORICAL_INTERVAL_HOURS) for hours in _ROLLING_WINDOW_HOURS
+)
+ROLLING_WINDOW_LABELS = dict(zip(ROLLING_WINDOWS_STEPS, [f"{h}h" for h in _ROLLING_WINDOW_HOURS]))
 
 # Columns to compute rolling mean/std for.
 ROLLING_COLUMNS = ["aqi", "pm2_5", "pm10"]

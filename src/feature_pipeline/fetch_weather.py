@@ -147,7 +147,7 @@ class WeatherFetcher:
             "start_date": date_str,
             "end_date": date_str,
             "hourly": (
-                "temperature_2m,relative_humidity_2m,surface_pressure,"
+                "temperature_2m,apparent_temperature,relative_humidity_2m,surface_pressure,"
                 "wind_speed_10m,wind_direction_10m,cloud_cover,"
                 "precipitation,visibility,weather_code"
             ),
@@ -257,7 +257,11 @@ class WeatherFetcher:
                 "latitude": raw.get("latitude", lat),
                 "longitude": raw.get("longitude", lon),
                 "temperature": hourly["temperature_2m"][idx],
-                "feels_like": None,
+                "feels_like": (
+                    hourly.get("apparent_temperature", [None])[idx]
+                    if idx < len(hourly.get("apparent_temperature", []))
+                    else None
+                ),
                 "humidity": hourly["relative_humidity_2m"][idx],
                 "pressure": hourly["surface_pressure"][idx],
                 "visibility": hourly.get("visibility", [None])[idx] if idx < len(hourly.get("visibility", [])) else None,
