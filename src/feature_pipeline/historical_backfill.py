@@ -15,7 +15,7 @@ from src.utils.storage import save_csv, save_json, save_metadata, load_csv
 
 logger = get_logger(__name__)
 
-HISTORICAL_INTERVAL_HOURS = 3
+HISTORICAL_INTERVAL_HOURS = 1
 HISTORICAL_INTERVAL_SECONDS = HISTORICAL_INTERVAL_HOURS * 3600
 HISTORICAL_BATCH_SIZE = 1
 
@@ -31,6 +31,15 @@ def _align_to_interval(dt: datetime, interval_hours: int) -> datetime:
     """
     aligned_hour = (dt.hour // interval_hours) * interval_hours
     return dt.replace(hour=aligned_hour, minute=0, second=0, microsecond=0)
+
+
+def _parse_backfill_date(date_str: str, is_end: bool = False) -> datetime:
+    dt = datetime.fromisoformat(date_str)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    if is_end and 'T' not in date_str:
+        dt = dt.replace(hour=23, minute=59, second=59)
+    return dt
 
 
 def _build_seen_keys(processed_path: Path) -> set[tuple[str, str]]:
@@ -133,17 +142,12 @@ def run_historical_backfill(
     settings = settings or load_settings()
 
     try:
-        start = datetime.fromisoformat(start_date)
-        end = datetime.fromisoformat(end_date)
+        start = _parse_backfill_date(start_date)
+        end = _parse_backfill_date(end_date, is_end=True)
     except ValueError as exc:
         raise PipelineError(
             f"Invalid date format: start={start_date!r} end={end_date!r} ({exc})"
         ) from exc
-
-    if start.tzinfo is None:
-        start = start.replace(tzinfo=timezone.utc)
-    if end.tzinfo is None:
-        end = end.replace(tzinfo=timezone.utc)
 
     if start > end:
         raise PipelineError(
