@@ -21,7 +21,8 @@ model inputs and target needed for training:
       exact method and its limitations).
     * AQI change rate -- first difference from the previous reading.
     * The forecasting target: AQI ``HORIZON_STEPS`` intervals ahead
-      (default: 24 steps = 3 days, at the pipeline's 3-hour interval).
+      (default: 3 days, computed from the pipeline's actual
+      ``HISTORICAL_INTERVAL_HOURS`` collection interval).
 
 All derived/lag/rolling/target columns are computed **per city**, using a
 sorted, deduplicated timestamp index, so that rows from different cities (or
@@ -294,12 +295,26 @@ def _add_pollution_index(df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         The same DataFrame with a ``pollution_index`` column appended.
     """
-    available_cols = [c for c in POLLUTION_INDEX_REFERENCE if c in df.columns]
-    if not available_cols:
+    # A column can exist in the dataset yet be entirely null (e.g. pm10/co/
+    # so2/no2/o3 for a monitoring source that only measures AQI + PM2.5 --
+    # see README Section 10). Checking "in df.columns" alone would still
+    # count those as "available", making the composite silently collapse
+    # into a scaled copy of whichever single pollutant actually has data
+    # (perfectly correlated with it -- no new information for a model).
+    # Only treat a pollutant as available if it has at least some real
+    # (non-null) data somewhere in the dataset.
+    available_cols = [
+        c for c in POLLUTION_INDEX_REFERENCE
+        if c in df.columns and df[c].notna().any()
+    ]
+
+    if len(available_cols) < 2:
         logger.warning(
-            "None of the expected pollutant columns %s found; "
-            "pollution_index will be all-NaN",
-            list(POLLUTION_INDEX_REFERENCE.keys()),
+            "Fewer than 2 pollutant columns with real data available "
+            "(found: %s); pollution_index would just duplicate a single "
+            "existing column, so it will be set to NaN and should be "
+            "excluded from model training.",
+            available_cols,
         )
         df["pollution_index"] = np.nan
         return df
@@ -322,7 +337,8 @@ def _add_target(df: pd.DataFrame, horizon_steps: int) -> pd.DataFrame:
         df: DataFrame sorted by ``(city, collection_timestamp)``.
         horizon_steps: How many rows ahead (at the pipeline's fixed
             interval) the target should look. Default corresponds to 3
-            days at a 3-hour interval (24 steps).
+            days at the pipeline's actual ``HISTORICAL_INTERVAL_HOURS``
+            collection interval.
 
     Returns:
         The same DataFrame with an ``aqi_target`` column appended.
