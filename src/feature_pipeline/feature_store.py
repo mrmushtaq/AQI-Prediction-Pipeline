@@ -34,10 +34,16 @@ from src.common.logger import get_logger
 logger = get_logger(__name__)
 
 FEATURE_GROUP_NAME = "aqi_features"
-FEATURE_GROUP_VERSION = 1
+FEATURE_GROUP_VERSION = 2
 FEATURE_GROUP_DESCRIPTION = (
     "Engineered AQI + weather features (Phase 2 output): time/cyclic features, "
-    "lag features, rolling stats, pollution index, and the aqi_target label."
+    "lag features, rolling stats, pollution index, and the aqi_target label. "
+    "v2: supersedes v1 -- fixes 'feels_like' being null for all historical "
+    "records (Open-Meteo Archive wasn't requesting apparent_temperature), and "
+    "fixes rolling-window/forecast-horizon sizes that were computed assuming "
+    "a 3-hour collection interval when the pipeline actually runs hourly "
+    "(rolling windows were silently 8h/16h instead of the labeled 24h/48h, "
+    "and aqi_target was 24h ahead instead of the intended 72h/3-day horizon)."
 )
 
 # `collection_timestamp` is the pipeline's normalized, idempotency-safe
