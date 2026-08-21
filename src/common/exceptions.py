@@ -65,3 +65,9 @@ class FeatureStoreError(PipelineError):
     feature group creation/retrieval, feature insertion, or reading
     features back.
     """
+
+class TrainingError(PipelineError):
+    """Raised when a model-training-pipeline operation fails: loading
+    features/targets, preprocessing, model fitting, evaluation, or saving to
+    a model registry (local or Hopsworks).
+    """

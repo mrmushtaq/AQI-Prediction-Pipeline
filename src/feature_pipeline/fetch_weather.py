@@ -91,7 +91,7 @@ class WeatherFetcher:
                 last_exception = APIError(f"Request timed out: {exc}", source=SOURCE_NAME)
             except requests.exceptions.RequestException as exc:
                 last_exception = APIError(f"Request failed: {exc}", source=SOURCE_NAME)
-            except ValueError as exc:  # JSON decoding error
+            except ValueError as exc:
                 last_exception = APIError(f"Invalid JSON response: {exc}", source=SOURCE_NAME)
 
             if attempt < self.settings.max_retries:

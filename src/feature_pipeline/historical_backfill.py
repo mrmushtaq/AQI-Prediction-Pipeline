@@ -189,6 +189,26 @@ def run_historical_backfill(
 
     for current_ts in timestamps:
         collection_ts_iso = current_ts.isoformat()
+
+        # Early dedup check -- BEFORE any API calls. (collection_timestamp,
+        # city) is fully known upfront without fetching weather/AQI data
+        # (city is always settings.default_city for historical fetches), so
+        # an already-collected timestamp can be skipped in O(1) with zero
+        # network calls. This is what makes resuming an interrupted backfill
+        # fast: previously-completed chunks are skipped instantly instead of
+        # being re-fetched from both APIs and then discarded.
+        early_key = (collection_ts_iso, settings.default_city)
+        if early_key in seen_keys:
+            skipped_count += 1
+            logger.info(
+                "Backfill step %d/%d: already collected, skipping (no API call): %s",
+                step_count + 1,
+                len(timestamps),
+                collection_ts_iso,
+            )
+            step_count += 1
+            continue
+
         logger.info(
             "Backfill step %d/%d: fetching data for %s",
             step_count + 1,

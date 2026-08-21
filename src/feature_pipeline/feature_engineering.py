@@ -68,6 +68,12 @@ CHANGE_RATE_COLUMNS = ["aqi", "pm2_5", "pm10", "temperature", "humidity"]
 # How many previous readings to include as explicit lag features.
 LAG_STEPS = (1, 2)
 
+# Additional lag steps capturing daily/weekly periodicity. At the pipeline's
+# hourly interval these correspond to the same hour 1/2/3/7 days ago, which
+# are the strongest predictors for a 24-72h forecast (the short 1-2h lags
+# alone carry almost no signal at that horizon).
+SEASONAL_LAG_STEPS = (24, 48, 72, 168)
+
 # Rolling-window sizes, in number of intervals. Computed dynamically from
 # HISTORICAL_INTERVAL_HOURS (the pipeline's actual collection interval) so
 # these always represent true 24h/48h windows regardless of what that
@@ -193,6 +199,10 @@ def _add_change_rate_and_lag_features(df: pd.DataFrame) -> pd.DataFrame:
           reading for that city (``NaN`` for each city's first row).
         * ``<col>_lag_<n>`` for each ``n`` in ``LAG_STEPS`` -- the value
           from ``n`` readings ago for that city.
+        * ``<col>_lag_<n>`` for each ``n`` in ``SEASONAL_LAG_STEPS`` -- the
+          value from ``n`` readings ago (the same hour 1/2/3/7 days back at
+          an hourly interval), capturing the daily/weekly periodicity that
+          dominates a 24-72h AQI forecast.
 
     Grouping by ``city`` before computing ``diff()``/``shift()`` ensures a
     change-rate or lag value is never computed across a city boundary.
@@ -214,7 +224,7 @@ def _add_change_rate_and_lag_features(df: pd.DataFrame) -> pd.DataFrame:
             continue
         df[f"{col}_change_rate"] = grouped[col].diff()
 
-        for lag in LAG_STEPS:
+        for lag in LAG_STEPS + SEASONAL_LAG_STEPS:
             df[f"{col}_lag_{lag}"] = grouped[col].shift(lag)
 
     return df

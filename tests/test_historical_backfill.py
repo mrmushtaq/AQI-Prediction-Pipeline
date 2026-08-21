@@ -48,7 +48,7 @@ def _make_aqi(dt: datetime) -> dict:
     }
 
 
-def _gen_side_effect(start_ts_str: str, interval_hours: int = 3):
+def _gen_side_effect(start_ts_str: str, interval_hours: int = 1):
     """Return side-effect closures for weather and AQI mocks that generate
     per-step data with the correct timestamp based on call count.
     """
@@ -71,7 +71,7 @@ def _gen_side_effect(start_ts_str: str, interval_hours: int = 3):
     return weather_side, aqi_side
 
 
-def _gen_weather_side_for(start_ts_str: str, interval_hours: int = 3):
+def _gen_weather_side_for(start_ts_str: str, interval_hours: int = 1):
     base = datetime.fromisoformat(start_ts_str).replace(tzinfo=timezone.utc)
     call_index = [0]
 
@@ -137,7 +137,7 @@ def test_backfill_multiple_steps(settings, tmp_path):
             "2025-01-01T00:00:00", "2025-01-01T06:00:00", settings
         )
 
-    assert len(records) == 3
+    assert len(records) == 7
 
 
 def test_backfill_skips_on_api_error(settings, tmp_path):
@@ -171,7 +171,7 @@ def test_backfill_skips_on_api_error(settings, tmp_path):
             "2025-01-01T00:00:00", "2025-01-01T06:00:00", settings
         )
 
-    assert len(records) == 2
+    assert len(records) == 6
 
 
 def test_backfill_dedup_skips_existing_timestamps(settings, tmp_path):
@@ -196,7 +196,7 @@ def test_backfill_dedup_skips_existing_timestamps(settings, tmp_path):
         first = run_historical_backfill(
             "2025-01-01T00:00:00", "2025-01-01T06:00:00", settings
         )
-    assert len(first) == 3
+    assert len(first) == 7
 
     with (
         patch(
@@ -236,7 +236,7 @@ def test_backfill_dedup_partial_overlap(settings, tmp_path):
         first = run_historical_backfill(
             "2025-01-01T00:00:00", "2025-01-01T03:00:00", settings
         )
-    assert len(first) == 2
+    assert len(first) == 4
 
     with (
         patch(
@@ -251,7 +251,7 @@ def test_backfill_dedup_partial_overlap(settings, tmp_path):
         second = run_historical_backfill(
             "2025-01-01T03:00:00", "2025-01-01T09:00:00", settings
         )
-    assert len(second) == 2
+    assert len(second) == 6
 
 
 def test_backfill_rejects_invalid_date_range(settings):

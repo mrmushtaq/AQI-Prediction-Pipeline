@@ -52,6 +52,7 @@ SOURCE_AQICN_CITY = "AQICN-city"
 SOURCE_AQICN_GEO = "AQICN-geo"
 SOURCE_OPENWEATHER_FALLBACK = "OpenWeather-AirPollution"
 SOURCE_OPENAQ_HISTORICAL = "OpenAQ-v3"
+SOURCE_OPENMETEO_HISTORICAL = "OpenMeteo-AirQuality"
 
 # OpenWeather AQI is on a 1-5 scale; AQICN uses the US EPA 0-500 scale.
 # We keep both sources' native AQI value as-is and record `source` so
@@ -68,6 +69,14 @@ OPENAQ_MEASUREMENT_WINDOW_HOURS = 6
 # giving up on that pollutant for this timestamp. Trying more than one
 # sensor lets us route around individual sensors with local data gaps.
 OPENAQ_MAX_SENSORS_PER_PARAM = 5
+
+# Open-Meteo's Air Quality API (CAMS-model-based, no API key required). Used
+# as a fallback when OpenAQ v3 has no ground-sensor data for the requested
+# location/time (e.g. before a station's activation date, or for cities
+# with no nearby OpenAQ coverage at all). Unlike OpenAQ, this is a MODEL
+# ESTIMATE (~40km global resolution), not a direct ground measurement -- see
+# the module docstring and README Section 11 for the distinction.
+OPENMETEO_AIR_QUALITY_URL = "https://air-quality-api.open-meteo.com/v1/air-quality"
 
 
 class AirQualityFetcher:
@@ -149,7 +158,7 @@ class AirQualityFetcher:
                 last_exception = APIError(f"Request timed out: {exc}", source=source)
             except requests.exceptions.RequestException as exc:
                 last_exception = APIError(f"Request failed: {exc}", source=source)
-            except ValueError as exc:  # JSON decoding error
+            except ValueError as exc:
                 last_exception = APIError(f"Invalid JSON response: {exc}", source=source)
 
             if attempt < self.settings.max_retries:
@@ -362,11 +371,117 @@ class AirQualityFetcher:
             lon,
             dt.isoformat(),
         )
-        return self._fetch_openaq_v3_measurements(lat, lon, dt)
+        try:
+            return self._fetch_openaq_v3_measurements(lat, lon, dt)
+        except APIError as openaq_error:
+            logger.warning(
+                "stage=%s event=stage_failed next_stage=%s reason=%s",
+                SOURCE_OPENAQ_HISTORICAL,
+                SOURCE_OPENMETEO_HISTORICAL,
+                openaq_error,
+            )
+            logger.info("stage=%s event=attempt_started", SOURCE_OPENMETEO_HISTORICAL)
+            try:
+                return self._fetch_openmeteo_air_quality(lat, lon, dt)
+            except APIError as openmeteo_error:
+                logger.error(
+                    "stage=%s event=all_stages_exhausted errors=%s",
+                    "AQI-historical-all-sources",
+                    f"{SOURCE_OPENAQ_HISTORICAL}: {openaq_error} | "
+                    f"{SOURCE_OPENMETEO_HISTORICAL}: {openmeteo_error}",
+                )
+                raise APIError(
+                    f"All historical AQI sources failed. {SOURCE_OPENAQ_HISTORICAL}: "
+                    f"{openaq_error} | {SOURCE_OPENMETEO_HISTORICAL}: {openmeteo_error}",
+                    source="AQI-historical-all-sources",
+                ) from openmeteo_error
 
     def _build_auth_headers(self) -> dict[str, str]:
         """Build the ``X-API-Key`` header required by OpenAQ v3."""
         return {"X-API-Key": self.settings.openaq_api_key}
+
+    def _fetch_openmeteo_air_quality(
+        self, lat: float, lon: float, dt: datetime
+    ) -> dict[str, Any]:
+        """Fetch historical AQI from Open-Meteo's Air Quality API (CAMS
+        atmospheric-composition model), used as a fallback when OpenAQ v3
+        has no ground-sensor data for this location/time.
+
+        Unlike OpenAQ, this is a **model estimate**, not a ground
+        measurement -- see the module docstring. Open-Meteo computes the US
+        EPA AQI (``us_aqi``) directly, so it is used as-is here rather than
+        recomputed via :meth:`_calculate_aqi` (which expects OpenAQ's raw,
+        per-parameter concentration units).
+
+        Args:
+            lat: Latitude.
+            lon: Longitude.
+            dt:  Requested observation datetime (UTC).
+
+        Returns:
+            Standardized AQI dictionary, ``source="OpenMeteo-AirQuality"``.
+
+        Raises:
+            APIError: If the request fails or no matching hourly entry is found.
+        """
+        date_str = dt.strftime("%Y-%m-%d")
+        params: dict[str, Any] = {
+            "latitude": lat,
+            "longitude": lon,
+            "start_date": date_str,
+            "end_date": date_str,
+            "hourly": "pm10,pm2_5,carbon_monoxide,nitrogen_dioxide,sulphur_dioxide,ozone,us_aqi",
+            "timezone": "UTC",
+        }
+        raw = self._request_with_retry(
+            OPENMETEO_AIR_QUALITY_URL, params, source=SOURCE_OPENMETEO_HISTORICAL,
+        )
+
+        try:
+            hourly = raw["hourly"]
+            times: list[str] = hourly["time"]
+            requested_iso = dt.strftime("%Y-%m-%dT%H:00")
+
+            idx = times.index(requested_iso) if requested_iso in times else None
+            if idx is None:
+                raise APIError(
+                    f"No matching hourly entry for {requested_iso} in Open-Meteo "
+                    f"Air Quality response.",
+                    source=SOURCE_OPENMETEO_HISTORICAL,
+                )
+
+            return {
+                "timestamp": dt.isoformat(),
+                "city": self.settings.default_city,
+                "latitude": raw.get("latitude", lat),
+                "longitude": raw.get("longitude", lon),
+                "aqi": hourly["us_aqi"][idx],
+                "pm2_5": hourly["pm2_5"][idx],
+                # pm10/co/so2/no2/o3 are deliberately set to None here, even
+                # though Open-Meteo *does* provide model-estimated values for
+                # them. Sukkur's real OpenAQ ground sensor only measures
+                # AQI + PM2.5, so for the OpenAQ-covered era (~Nov 2025+)
+                # these columns are always null (see README Section 10).
+                # Populating them only for this Open-Meteo fallback era would
+                # make column-availability itself a spurious proxy for
+                # calendar time/season -- a model could learn "pm10 present"
+                # as a stand-in for "this is old data" rather than any real
+                # physical relationship. Nulling them keeps the schema
+                # consistent across the full historical range; `aqi` and
+                # `pm2_5` remain the two universally-reliable pollutant
+                # fields either way.
+                "pm10": None,
+                "co": None,
+                "so2": None,
+                "no2": None,
+                "o3": None,
+                "source": SOURCE_OPENMETEO_HISTORICAL,
+            }
+        except (KeyError, IndexError, ValueError) as exc:
+            raise APIError(
+                f"Unexpected Open-Meteo Air Quality response structure: {exc}",
+                source=SOURCE_OPENMETEO_HISTORICAL,
+            ) from exc
 
     def _fetch_openaq_v3_locations(
         self, lat: float, lon: float

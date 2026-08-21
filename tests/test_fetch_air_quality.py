@@ -320,6 +320,28 @@ SAMPLE_V3_EMPTY_MEASUREMENTS = {
     "results": [],
 }
 
+# --- Open-Meteo Air Quality (historical fallback) test data ---
+
+SAMPLE_OPENMETEO_AIR_QUALITY_RESPONSE = {
+    "latitude": 27.7052,
+    "longitude": 68.8574,
+    "hourly": {
+        "time": [
+            "2025-01-01T00:00",
+            "2025-01-01T01:00",
+            "2025-01-01T02:00",
+            "2025-01-01T03:00",
+        ],
+        "pm10": [45.0, 46.0, 47.0, 48.0],
+        "pm2_5": [25.0, 26.0, 27.0, 28.0],
+        "carbon_monoxide": [300.0, 310.0, 320.0, 330.0],
+        "nitrogen_dioxide": [8.0, 9.0, 10.0, 11.0],
+        "sulphur_dioxide": [5.0, 6.0, 7.0, 8.0],
+        "ozone": [30.0, 31.0, 32.0, 33.0],
+        "us_aqi": [120, 121, 122, 123],
+    },
+}
+
 
 def _mock_response(status_code: int, json_data: dict | None = None, text: str = "") -> MagicMock:
     mock = MagicMock()
@@ -346,17 +368,28 @@ def _is_v3_sensor_query(url: str) -> bool:
     return "openaq.org/v3/sensors/" in url and "/measurements" in url
 
 
+def _is_openmeteo_query(url: str) -> bool:
+    return "air-quality-api.open-meteo.com" in url
+
+
 def _build_v3_sensor_side_effect(
     locations_response: dict,
     measurements_by_sensor: dict[int, dict],
+    openmeteo_response: MagicMock | None = None,
 ):
     """Build a side-effect function that returns the appropriate mock response
-    for each step of the OpenAQ v3 lookup chain.
+    for each step of the OpenAQ v3 lookup chain -- and, optionally, for the
+    Open-Meteo Air Quality fallback that is reached whenever OpenAQ raises an
+    ``APIError``.
 
     Args:
         locations_response: The JSON response for the initial locations query.
         measurements_by_sensor: Dict mapping sensor_id -> JSON response for
             that sensor's measurements endpoint.
+        openmeteo_response: Mock response to return for the Open-Meteo
+            Air Quality fallback endpoint. If ``None``, hitting that endpoint
+            raises ``AssertionError`` (so tests that expect OpenAQ to succeed
+            can prove the fallback was never invoked).
     """
     call_count = [0]
 
@@ -374,6 +407,12 @@ def _build_v3_sensor_side_effect(
             resp = measurements_by_sensor.get(sensor_id, SAMPLE_V3_EMPTY_MEASUREMENTS)
             call_count[0] += 1
             return _mock_response(200, resp)
+        if _is_openmeteo_query(url):
+            if openmeteo_response is None:
+                raise AssertionError(
+                    f"Unexpected Open-Meteo fallback URL: {url} (OpenAQ did not fail)"
+                )
+            return openmeteo_response
         raise AssertionError(f"Unexpected URL: {url}")
 
     return side_effect
@@ -468,28 +507,32 @@ def test_fetch_historical_aqi_success(settings):
 
 
 def test_fetch_historical_aqi_raises_on_empty_locations(settings):
-    """When OpenAQ v3 returns no locations, raise a clear error."""
+    """When OpenAQ v3 returns no locations AND the Open-Meteo fallback also
+    fails, raise a clear error mentioning both sources."""
     fetcher = AirQualityFetcher(settings)
     side_effect = _build_v3_sensor_side_effect(
         SAMPLE_V3_EMPTY_LOCATIONS_RESPONSE,
         {},
+        openmeteo_response=_mock_response(500, text="down"),
     )
     with patch.object(fetcher.session, "get", side_effect=side_effect):
-        with pytest.raises(APIError, match="No OpenAQ v3 monitoring locations found"):
+        with pytest.raises(APIError, match="All historical AQI sources failed"):
             fetcher.fetch_historical_aqi(
                 latitude=27.7052, longitude=68.8574, timestamp=1735689600
             )
 
 
 def test_fetch_historical_aqi_raises_on_locations_without_sensors(settings):
-    """When OpenAQ v3 returns locations but no target sensors, raise a clear error."""
+    """When OpenAQ v3 returns locations but no target sensors AND the
+    Open-Meteo fallback also fails, raise a clear error."""
     fetcher = AirQualityFetcher(settings)
     side_effect = _build_v3_sensor_side_effect(
         SAMPLE_V3_LOCATIONS_NO_SENSORS_RESPONSE,
         {},
+        openmeteo_response=_mock_response(500, text="down"),
     )
     with patch.object(fetcher.session, "get", side_effect=side_effect):
-        with pytest.raises(APIError, match="No OpenAQ v3 sensors found"):
+        with pytest.raises(APIError, match="All historical AQI sources failed"):
             fetcher.fetch_historical_aqi(
                 latitude=27.7052, longitude=68.8574, timestamp=1735689600
             )
@@ -584,17 +627,61 @@ def test_fetch_historical_aqi_handles_unit_conversion(settings):
 
 
 def test_fetch_historical_aqi_raises_on_no_supported_sensors(settings):
-    """When OpenAQ v3 returns locations with only unsupported sensors, raise a clear error."""
+    """When OpenAQ v3 returns locations with only unsupported sensors AND the
+    Open-Meteo fallback also fails, raise a clear error."""
     fetcher = AirQualityFetcher(settings)
     side_effect = _build_v3_sensor_side_effect(
         SAMPLE_V3_UNSUPPORTED_PARAM_LOCATIONS,
         {},
+        openmeteo_response=_mock_response(500, text="down"),
     )
     with patch.object(fetcher.session, "get", side_effect=side_effect):
-        with pytest.raises(APIError, match="No OpenAQ v3 sensors found"):
+        with pytest.raises(APIError, match="All historical AQI sources failed"):
             fetcher.fetch_historical_aqi(
                 latitude=27.7052, longitude=68.8574, timestamp=1735689600
             )
+
+
+def test_fetch_historical_aqi_falls_back_to_openmeteo_on_empty_locations(settings):
+    """When OpenAQ v3 has no ground sensors for the location, the pipeline
+    transparently falls back to the Open-Meteo Air Quality (model) API."""
+    fetcher = AirQualityFetcher(settings)
+    side_effect = _build_v3_sensor_side_effect(
+        SAMPLE_V3_EMPTY_LOCATIONS_RESPONSE,
+        {},
+        openmeteo_response=_mock_response(200, SAMPLE_OPENMETEO_AIR_QUALITY_RESPONSE),
+    )
+    with patch.object(fetcher.session, "get", side_effect=side_effect):
+        result = fetcher.fetch_historical_aqi(
+            latitude=27.7052, longitude=68.8574, timestamp=1735689600
+        )
+
+    assert result["source"] == "OpenMeteo-AirQuality"
+    assert result["aqi"] == 120
+    assert result["pm2_5"] == 25.0
+    # Pollutant fields are deliberately nulled for the model-estimate era to
+    # keep the schema consistent across the full historical range.
+    assert result["pm10"] is None
+    assert result["co"] is None
+    assert result["so2"] is None
+    assert result["no2"] is None
+    assert result["o3"] is None
+
+
+def test_fetch_historical_aqi_does_not_fall_back_when_openaq_succeeds(settings):
+    """The Open-Meteo fallback must NOT be invoked when OpenAQ v3 succeeds."""
+    fetcher = AirQualityFetcher(settings)
+    side_effect = _build_v3_sensor_side_effect(
+        SAMPLE_V3_LOCATIONS_RESPONSE,
+        SAMPLE_V3_MEASUREMENTS_BY_SENSOR,
+    )
+    with patch.object(fetcher.session, "get", side_effect=side_effect) as mock_get:
+        result = fetcher.fetch_historical_aqi(
+            latitude=27.7052, longitude=68.8574, timestamp=1735689600
+        )
+
+    assert result["source"] == "OpenAQ-v3"
+    assert all(not _is_openmeteo_query(call.args[0]) for call in mock_get.call_args_list)
 
 
 def test_fetch_historical_aqi_passes_auth_header(settings):
