@@ -1,0 +1,53 @@
+name: Hourly Live Ingestion
+
+on:
+  schedule:
+    - cron: "0 * * * *"  # every hour, on the hour (UTC)
+  workflow_dispatch: {}   # allow manual triggering from the Actions tab
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # data/ is git-ignored by design (README Section 3) and this runner
+      # is ephemeral, so nothing survives between scheduled runs on its
+      # own. This cache carries data/raw, data/processed, data/metadata
+      # forward without committing generated data to git.
+      #
+      # CAVEAT: GitHub evicts cache entries after ~7 days unused or once
+      # the repo's 10GB cache quota is hit -- this is NOT a durable
+      # long-term store, just a way to keep the live dataset warm between
+      # runs. The Hopsworks Feature Store sync (feature_store.py) is the
+      # actual durable copy of engineered features.
+      - name: Restore data cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/raw
+            data/processed
+            data/metadata
+          key: aqi-data-${{ github.run_id }}
+          restore-keys: |
+            aqi-data-
+
+      - name: Run live ingestion
+        env:
+          AQICN_TOKEN: ${{ secrets.AQICN_TOKEN }}
+          OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
+          DEFAULT_CITY: ${{ secrets.DEFAULT_CITY }}
+          OPENWEATHER_LAT: ${{ secrets.OPENWEATHER_LAT }}
+          OPENWEATHER_LON: ${{ secrets.OPENWEATHER_LON }}
+        run: python -m src.feature_pipeline.run_pipeline

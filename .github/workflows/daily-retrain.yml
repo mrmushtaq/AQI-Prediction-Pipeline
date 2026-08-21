@@ -1,0 +1,84 @@
+name: Daily Backfill + Retrain
+
+on:
+  schedule:
+    - cron: "30 2 * * *"  # 02:30 UTC daily, after the day's hourly runs
+  workflow_dispatch: {}
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Same caveat as hourly-ingestion.yml -- see its comment for details.
+      - name: Restore data cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/raw
+            data/processed
+            data/metadata
+          key: aqi-data-${{ github.run_id }}
+          restore-keys: |
+            aqi-data-
+
+      - name: Compute yesterday's date range
+        id: dates
+        run: |
+          echo "start=$(date -u -d 'yesterday' +%F)" >> "$GITHUB_OUTPUT"
+          echo "end=$(date -u +%F)" >> "$GITHUB_OUTPUT"
+
+      # Extends data/processed/aqi_dataset_historical.csv with the last
+      # day's data. Idempotent/resumable by design (README Section 6) --
+      # re-running for an already-covered range is safe and cheap, since
+      # already-saved timestamps are skipped before any API call is made.
+      - name: Extend historical dataset
+        env:
+          OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
+          OPENWEATHER_LAT: ${{ secrets.OPENWEATHER_LAT }}
+          OPENWEATHER_LON: ${{ secrets.OPENWEATHER_LON }}
+          DEFAULT_CITY: ${{ secrets.DEFAULT_CITY }}
+        run: |
+          python -m src.feature_pipeline.historical_backfill \
+            ${{ steps.dates.outputs.start }} ${{ steps.dates.outputs.end }}
+
+      - name: Rebuild engineered features
+        run: python -m src.feature_pipeline.feature_engineering
+
+      # Best-effort: keeps the Hopsworks Feature Store in sync so
+      # `--source hopsworks` stays usable elsewhere. A failure here
+      # shouldn't block retraining off the freshly-rebuilt local CSV.
+      - name: Sync Hopsworks Feature Store
+        continue-on-error: true
+        env:
+          HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+          HOPSWORKS_PROJECT_NAME: ${{ secrets.HOPSWORKS_PROJECT_NAME }}
+        run: python -m src.feature_pipeline.feature_store
+
+      - name: Retrain v6 models
+        run: python -m src.training_pipeline.train_v6
+
+      # NOT continue-on-error: if fw_* stops adding real signal over
+      # historical-only features, that's a meaningful regression worth
+      # blocking the workflow on, not silently accepting.
+      - name: Ablation sanity check (fw_* still earning its keep?)
+        run: python -m src.training_pipeline.train_v6_ablation
+
+      - name: Upload trained models as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aqi-v6-models-${{ github.run_id }}
+          path: data/model_registry/ridge_3day_dailyavg_v6_*/
+          retention-days: 30
