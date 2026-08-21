@@ -47,7 +47,10 @@ jobs:
         env:
           AQICN_TOKEN: ${{ secrets.AQICN_TOKEN }}
           OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
+          OPENAQ_API_KEY: ${{ secrets.OPENAQ_API_KEY }}
           DEFAULT_CITY: ${{ secrets.DEFAULT_CITY }}
           OPENWEATHER_LAT: ${{ secrets.OPENWEATHER_LAT }}
           OPENWEATHER_LON: ${{ secrets.OPENWEATHER_LON }}
+          HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+          HOPSWORKS_PROJECT_NAME: ${{ secrets.HOPSWORKS_PROJECT_NAME }}
         run: python -m src.feature_pipeline.run_pipeline
