@@ -261,7 +261,7 @@ def insert_features(fg: Any, df: pd.DataFrame) -> None:
         FeatureStoreError: If the insert fails.
     """
     try:
-        fg.insert(df)
+        fg.insert(df, wait_for_job=True)
     except Exception as exc:
         raise FeatureStoreError(f"Failed to insert features into Hopsworks: {exc}") from exc
     logger.info(
