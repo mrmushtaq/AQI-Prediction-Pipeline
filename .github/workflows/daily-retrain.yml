@@ -81,12 +81,18 @@ jobs:
         run: python -m src.feature_pipeline.feature_store
 
       - name: Retrain v6 models
+        env:
+          HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+          HOPSWORKS_PROJECT_NAME: ${{ secrets.HOPSWORKS_PROJECT_NAME }}
         run: python -m src.training_pipeline.train_v6 --source hopsworks
 
       # NOT continue-on-error: if fw_* stops adding real signal over
       # historical-only features, that's a meaningful regression worth
       # blocking the workflow on, not silently accepting.
       - name: Ablation sanity check (fw_* still earning its keep?)
+        env:
+          HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
+          HOPSWORKS_PROJECT_NAME: ${{ secrets.HOPSWORKS_PROJECT_NAME }}
         run: python -m src.training_pipeline.train_v6_ablation --source hopsworks --source hopsworks
 
       - name: Upload trained models as a workflow artifact
