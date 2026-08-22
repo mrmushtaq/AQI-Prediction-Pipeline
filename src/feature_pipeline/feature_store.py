@@ -31,6 +31,8 @@ from configs.config import PROJECT_ROOT, HopsworksSettings, load_hopsworks_setti
 from src.common.exceptions import FeatureStoreError
 from src.common.logger import get_logger
 
+import time          # <-- add this line
+
 logger = get_logger(__name__)
 
 FEATURE_GROUP_NAME = "aqi_features"
@@ -261,7 +263,7 @@ def insert_features(fg: Any, df: pd.DataFrame) -> None:
         FeatureStoreError: If the insert fails.
     """
     try:
-        fg.insert(df, wait_for_job=True)
+        fg.insert(df, write_options={"wait_for_job": True})
     except Exception as exc:
         raise FeatureStoreError(f"Failed to insert features into Hopsworks: {exc}") from exc
     logger.info(
@@ -272,29 +274,38 @@ def insert_features(fg: Any, df: pd.DataFrame) -> None:
     )
 
 
-def read_features(fg: Any) -> pd.DataFrame:
-    """Read all features back from a feature group.
+def read_features(fg: Any, max_retries: int = 3, retry_delay_seconds: float = 15.0) -> pd.DataFrame:
+    """Read all features back from a feature group, retrying on transient
+    Hopsworks Query Service errors (e.g. a race right after materialization).
 
     Args:
         fg: A Hopsworks `FeatureGroup` handle.
+        max_retries: Number of read attempts before giving up.
+        retry_delay_seconds: Delay between retries.
 
     Returns:
         A pandas DataFrame with the feature group's current contents.
 
     Raises:
-        FeatureStoreError: If the read fails.
+        FeatureStoreError: If all read attempts fail.
     """
-    try:
-        result_df = fg.read()
-    except Exception as exc:
-        raise FeatureStoreError(f"Failed to read features from Hopsworks: {exc}") from exc
-    logger.info(
-        "Read %d rows back from feature group '%s' v%s",
-        len(result_df),
-        FEATURE_GROUP_NAME,
-        FEATURE_GROUP_VERSION,
-    )
-    return result_df
+    last_exc: Exception | None = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            result_df = fg.read()
+            logger.info(
+                "Read %d rows back from feature group '%s' v%s",
+                len(result_df), FEATURE_GROUP_NAME, FEATURE_GROUP_VERSION,
+            )
+            return result_df
+        except Exception as exc:
+            last_exc = exc
+            logger.warning(
+                "read_features attempt %d/%d failed: %s", attempt, max_retries, exc
+            )
+            if attempt < max_retries:
+                time.sleep(retry_delay_seconds)
+    raise FeatureStoreError(f"Failed to read features from Hopsworks after {max_retries} attempts: {last_exc}") from last_exc
 
 
 def sync_feature_store(feature_df_path: Path | str = DEFAULT_FEATURE_DF_PATH) -> pd.DataFrame:
