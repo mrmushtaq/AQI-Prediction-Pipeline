@@ -20,3 +20,4 @@ lime
 # tensorflow
 hsfs[python]
 confluent-kafka
+hopsworks>=4.0
