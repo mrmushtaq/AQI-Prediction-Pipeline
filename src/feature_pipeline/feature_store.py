@@ -243,6 +243,7 @@ def get_or_create_feature_group(fs: Any, description: str = FEATURE_GROUP_DESCRI
             primary_key=PRIMARY_KEY,
             event_time=EVENT_TIME_COLUMN,
             online_enabled=False,
+            statistics_config={"enabled": False},
         )
     except Exception as exc:
         raise FeatureStoreError(
