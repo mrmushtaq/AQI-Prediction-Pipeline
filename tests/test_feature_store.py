@@ -101,6 +101,7 @@ def test_login_falls_back_to_hsfs_when_hopsworks_not_installed(hopsworks_setting
         host=feature_store.DEFAULT_HOPSWORKS_HOST,
         project="test_project",
         api_key_value="test-api-key",
+        engine="python",
     )
     assert result is fake_fs
 
@@ -157,6 +158,7 @@ def test_get_or_create_feature_group_uses_expected_schema():
         primary_key=["city", "collection_timestamp"],
         event_time="collection_timestamp",
         online_enabled=False,
+        statistics_config={"enabled": False},
     )
     assert result is fake_fg
 
@@ -172,7 +174,9 @@ def test_get_or_create_feature_group_wraps_errors():
 def test_insert_features_calls_fg_insert(sample_feature_df):
     fake_fg = MagicMock()
     feature_store.insert_features(fake_fg, sample_feature_df)
-    fake_fg.insert.assert_called_once_with(sample_feature_df)
+    fake_fg.insert.assert_called_once_with(
+        sample_feature_df, write_options={"wait_for_job": True}
+    )
 
 
 def test_insert_features_wraps_errors(sample_feature_df):
@@ -193,7 +197,7 @@ def test_read_features_wraps_errors():
     fake_fg = MagicMock()
     fake_fg.read.side_effect = Exception("read timeout")
     with pytest.raises(FeatureStoreError):
-        feature_store.read_features(fake_fg)
+        feature_store.read_features(fake_fg, max_retries=1, retry_delay_seconds=0)
 
 
 # --- sync_feature_store (end-to-end, fully mocked) --------------------------
