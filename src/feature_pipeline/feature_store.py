@@ -292,7 +292,7 @@ def read_features(fg: Any, max_retries: int = 3, retry_delay_seconds: float = 15
     last_exc: Exception | None = None
     for attempt in range(1, max_retries + 1):
         try:
-            result_df = fg.read()
+            result_df = fg.read(read_options={"use_hive": True})
             logger.info(
                 "Read %d rows back from feature group '%s' v%s",
                 len(result_df), FEATURE_GROUP_NAME, FEATURE_GROUP_VERSION,
