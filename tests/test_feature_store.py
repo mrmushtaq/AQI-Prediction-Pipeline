@@ -152,7 +152,7 @@ def test_get_or_create_feature_group_uses_expected_schema():
 
     fake_fs.get_or_create_feature_group.assert_called_once_with(
         name="aqi_features",
-        version=2,
+        version=3,
         description=feature_store.FEATURE_GROUP_DESCRIPTION,
         primary_key=["city", "collection_timestamp"],
         event_time="collection_timestamp",
