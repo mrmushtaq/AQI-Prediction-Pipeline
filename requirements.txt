@@ -1,3 +1,4 @@
+numpy<1.24
 requests>=2.31.0
 python-dotenv>=1.0.0
 pandas>=2.0.0
@@ -17,6 +18,5 @@ lime
 # TensorFlow is not used by the training pipeline in this phase (Phase 5 uses
 # tree-based models only); install it separately if a future phase needs it.
 # tensorflow
-
 hsfs[python]
 confluent-kafka
