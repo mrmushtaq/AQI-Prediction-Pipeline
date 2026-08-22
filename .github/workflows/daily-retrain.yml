@@ -19,8 +19,13 @@ jobs:
 
       - name: Install dependencies
         run: |
+          echo "===== requirements.txt as checked out ====="
+          cat requirements.txt
+          echo "============================================"
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          echo "===== pip freeze after install ====="
+          pip freeze | grep -Ei "numpy|hsfs|hopsworks" || echo "none of numpy/hsfs/hopsworks found in pip freeze!"
 
       # Same caveat as hourly-ingestion.yml -- see its comment for details.
       - name: Restore data cache
