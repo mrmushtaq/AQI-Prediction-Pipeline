@@ -137,6 +137,7 @@ def login(settings: HopsworksSettings | None = None) -> Any:
             host=DEFAULT_HOPSWORKS_HOST,
             project=settings.project_name,
             api_key_value=settings.api_key,
+            engine="python",
         )
     except Exception as exc:
         raise FeatureStoreError(f"hsfs connection failed: {exc}") from exc
