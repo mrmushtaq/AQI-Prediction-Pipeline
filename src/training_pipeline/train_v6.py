@@ -56,7 +56,10 @@ from src.dashboard.forecast import (
     V6_RUN_PREFIX,
     build_daily_features,
 )
-from src.training_pipeline.data_loader import DEFAULT_FEATURE_DF_PATH
+
+import argparse
+
+from src.training_pipeline.data_loader import DEFAULT_FEATURE_DF_PATH, load_features
 
 logger = get_logger(__name__)
 
@@ -135,10 +138,16 @@ def inject_forecast_uncertainty(
 
 
 def main() -> None:
-    df = pd.read_csv(DEFAULT_FEATURE_DF_PATH)
-    df["collection_timestamp"] = pd.to_datetime(df["collection_timestamp"])
-    logger.info("Loaded %d hourly rows from %s", len(df), DEFAULT_FEATURE_DF_PATH)
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--source", choices=["local", "hopsworks"], default="local",
+        help="Where to load engineered features from (default: local CSV)",
+    )
+    args = parser.parse_args()
 
+    df = load_features(source=args.source, local_path=DEFAULT_FEATURE_DF_PATH)
+    df["collection_timestamp"] = pd.to_datetime(df["collection_timestamp"])
+    logger.info("Loaded %d hourly rows (source=%s)", len(df), args.source)
     df = df[df["collection_timestamp"] <= TRAIN_END_DATE].reset_index(drop=True)
     logger.info(
         "Truncated to training endpoint %s (%d rows) for a v5-comparable holdout",

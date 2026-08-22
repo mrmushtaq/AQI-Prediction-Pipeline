@@ -17,3 +17,6 @@ lime
 # TensorFlow is not used by the training pipeline in this phase (Phase 5 uses
 # tree-based models only); install it separately if a future phase needs it.
 # tensorflow
+
+hsfs[python]
+confluent-kafka

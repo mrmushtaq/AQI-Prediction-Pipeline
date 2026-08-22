@@ -40,7 +40,14 @@ from src.training_pipeline.train_v6 import (
 
 
 def main() -> None:
-    df = pd.read_csv(DEFAULT_FEATURE_DF_PATH)
+    import argparse
+    from src.training_pipeline.data_loader import load_features
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--source", choices=["local", "hopsworks"], default="local")
+    args = parser.parse_args()
+
+    df = load_features(source=args.source, local_path=DEFAULT_FEATURE_DF_PATH)
     df["collection_timestamp"] = pd.to_datetime(df["collection_timestamp"])
     df = df[df["collection_timestamp"] <= TRAIN_END_DATE].reset_index(drop=True)
 

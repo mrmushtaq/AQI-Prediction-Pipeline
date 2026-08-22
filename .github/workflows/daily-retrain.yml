@@ -81,13 +81,13 @@ jobs:
         run: python -m src.feature_pipeline.feature_store
 
       - name: Retrain v6 models
-        run: python -m src.training_pipeline.train_v6
+        run: python -m src.training_pipeline.train_v6 --source hopsworks
 
       # NOT continue-on-error: if fw_* stops adding real signal over
       # historical-only features, that's a meaningful regression worth
       # blocking the workflow on, not silently accepting.
       - name: Ablation sanity check (fw_* still earning its keep?)
-        run: python -m src.training_pipeline.train_v6_ablation
+        run: python -m src.training_pipeline.train_v6_ablation --source hopsworks --source hopsworks
 
       - name: Upload trained models as a workflow artifact
         uses: actions/upload-artifact@v4

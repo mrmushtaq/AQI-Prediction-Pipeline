@@ -34,7 +34,7 @@ from src.common.logger import get_logger
 logger = get_logger(__name__)
 
 FEATURE_GROUP_NAME = "aqi_features"
-FEATURE_GROUP_VERSION = 2
+FEATURE_GROUP_VERSION = 3
 FEATURE_GROUP_DESCRIPTION = (
     "Engineered AQI + weather features (Phase 2 output): time/cyclic features, "
     "lag features, rolling stats, pollution index, and the aqi_target label. "
