@@ -93,8 +93,25 @@ def login(settings: HopsworksSettings | None = None) -> Any:
 
     try:
         import hopsworks
-    except ImportError:
+    except ImportError as exc:
+        logger.warning(
+            "import hopsworks failed (%s: %s) -- falling back to 'hsfs'. "
+            "Run `pip show hopsworks` in CI to see if/why it isn't installed.",
+            type(exc).__name__,
+            exc,
+        )
         hopsworks = None
+    except Exception as exc:
+        # A partially-installed 'hopsworks' (e.g. a broken transitive
+        # dependency) can raise something other than ImportError on import.
+        # Surface it explicitly instead of silently falling back to hsfs.
+        logger.error(
+            "hopsworks is installed but failed to import (%s: %s). "
+            "This usually means a transitive dependency is broken.",
+            type(exc).__name__,
+            exc,
+        )
+        raise FeatureStoreError(f"hopsworks import failed unexpectedly: {exc}") from exc
 
     if hopsworks is not None:
         logger.info(
