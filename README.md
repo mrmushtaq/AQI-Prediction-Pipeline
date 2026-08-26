@@ -461,9 +461,10 @@ HOPSWORKS_PROJECT_NAME = "your_project"
 HOPSWORKS_HOST = "c.app.hopsworks.ai"
 ```
 
-The generated local CSV files and model artifacts are git-ignored. The
-deployed dashboard therefore requires the Hopsworks feature group/model
-artifacts, or a separate deployment branch containing generated artifacts.
+Raw API responses and run metadata remain git-ignored. The deployment branch
+includes the engineered feature CSV and the v6 model artifacts required for a
+working dashboard fallback; Hopsworks credentials still enable durable data
+loading and live refresh in Cloud.
 
 ---
 
