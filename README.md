@@ -439,6 +439,32 @@ The live workflow needs the API secrets listed in Section 5 plus repository
 write permission for committing generated outputs. Hopsworks credentials are
 used by the dashboard and daily workflow for durable feature/model access.
 
+### Streamlit Community Cloud deployment
+
+Community Cloud must be configured to use **Python 3.11** in the deployment
+dialogue: open **Advanced settings → Python version**, select 3.11, and save.
+This is required because the pinned Hopsworks 5.0 client does not support
+Python 3.14. The app entrypoint is `src/dashboard/app.py`.
+
+Add the API and Hopsworks values from Section 5 to the Cloud **Secrets** field
+using TOML syntax. For example:
+
+```toml
+AQICN_TOKEN = "your_token"
+OPENWEATHER_API_KEY = "your_key"
+OPENAQ_API_KEY = "your_key"
+DEFAULT_CITY = "Sukkur"
+OPENWEATHER_LAT = "27.7052"
+OPENWEATHER_LON = "68.8574"
+HOPSWORKS_API_KEY = "your_key"
+HOPSWORKS_PROJECT_NAME = "your_project"
+HOPSWORKS_HOST = "c.app.hopsworks.ai"
+```
+
+The generated local CSV files and model artifacts are git-ignored. The
+deployed dashboard therefore requires the Hopsworks feature group/model
+artifacts, or a separate deployment branch containing generated artifacts.
+
 ---
 
 ## 7. Sample Output
