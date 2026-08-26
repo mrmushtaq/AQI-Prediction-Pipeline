@@ -24,6 +24,8 @@ def load_data() -> pd.DataFrame:
     try:
         frame = load_hopsworks_data()
     except Exception:
+        frame = pd.DataFrame()
+    if frame.empty:
         frame, _ = load_historical_data()
     frame.attrs["live_status"] = "unavailable"
     try:
