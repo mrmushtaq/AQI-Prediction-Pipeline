@@ -54,7 +54,14 @@ def _get_env(key: str, *, required: bool = True, default: str | None = None) -> 
         ConfigurationError: If `required` is True and the variable is missing
             or empty.
     """
-    value = os.getenv(key, default)
+    value = os.getenv(key)
+    if value is None:
+        try:
+            import streamlit as st
+
+            value = st.secrets.get(key, default)
+        except Exception:
+            value = default
     if required and (value is None or value.strip() == ""):
         raise ConfigurationError(
             f"Missing required environment variable '{key}'. "
