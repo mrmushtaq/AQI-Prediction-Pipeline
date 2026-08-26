@@ -61,7 +61,11 @@ from src.dashboard.forecast import (
 import argparse
 
 from src.training_pipeline.data_loader import DEFAULT_FEATURE_DF_PATH, load_features
+<<<<<<< Updated upstream
 from src.training_pipeline.model_registry import register_model_to_hopsworks
+=======
+from src.training_pipeline.model_registry import register_forecast_models_to_hopsworks
+>>>>>>> Stashed changes
 
 logger = get_logger(__name__)
 
@@ -147,6 +151,7 @@ def main() -> None:
         default="local",
         help="Where to load engineered features from (default: local CSV)",
     )
+<<<<<<< Updated upstream
 
     parser.add_argument(
         "--register-hopsworks",
@@ -154,6 +159,9 @@ def main() -> None:
         help="Register the best trained v6 model to Hopsworks Model Registry",
     )
 
+=======
+    parser.add_argument("--register-hopsworks", action="store_true")
+>>>>>>> Stashed changes
     args = parser.parse_args()
 
     
@@ -283,6 +291,8 @@ def main() -> None:
 
     with open(out_dir / "metadata.json", "w", encoding="utf-8") as f:
         json.dump(summary, f, indent=2)
+    if args.register_hopsworks:
+        register_forecast_models_to_hopsworks(out_dir, summary)
     logger.info("Saved v6 models to %s", out_dir)
     print(f"\nSaved v6 models to {out_dir}")
 

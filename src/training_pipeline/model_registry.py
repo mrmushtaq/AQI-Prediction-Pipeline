@@ -45,6 +45,7 @@ DEFAULT_REGISTRY_DIR = PROJECT_ROOT / "data" / "model_registry"
 MODEL_FILE = "model.joblib"
 FEATURE_COLUMNS_FILE = "feature_columns.json"
 METADATA_FILE = "metadata.json"
+FORECAST_MODEL_PREFIX = "aqi_daily_forecast_v6"
 
 
 def save_model_locally(
@@ -260,4 +261,31 @@ def register_model_to_hopsworks(
             run_dir,
             exc,
         )
+        return False
+
+
+def register_forecast_models_to_hopsworks(
+    run_dir: Path | str,
+    metadata: Mapping[str, Mapping[str, Any]],
+) -> bool:
+    """Register all daily v6 forecast artifacts as one model per horizon."""
+    run_dir = Path(run_dir)
+    try:
+        from configs.config import load_hopsworks_settings
+        import hopsworks
+
+        settings = load_hopsworks_settings()
+        project = hopsworks.login(project=settings.project_name, api_key_value=settings.api_key)
+        model_registry = project.get_model_registry()
+        for label, item in metadata.items():
+            model_meta = model_registry.python.create_model(
+                name=f"{FORECAST_MODEL_PREFIX}_{label}",
+                metrics=dict(item.get("test_metrics", {})),
+                description=f"Sukkur AQI daily forecast model for {label}",
+            )
+            model_meta.save(str(run_dir))
+        logger.info("Registered v6 forecast models to Hopsworks Model Registry")
+        return True
+    except Exception as exc:  # noqa: BLE001 -- registry sync is best-effort
+        logger.warning("Could not register v6 forecast models to Hopsworks: %s", exc)
         return False

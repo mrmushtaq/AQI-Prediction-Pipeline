@@ -42,9 +42,12 @@ from Open-Meteo/CAMS model estimates.
 The deployed dashboard reads the durable Hopsworks feature group first, falls
 back to the checked-in generated files, and then attempts a real live
 OpenWeather/AQICN refresh. GitHub Actions commits refreshed generated data and
-v6 model artifacts to `main`; deployments connected to that branch redeploy
-after the push. To trigger another hosting provider, add its POST deployment
-URL as the GitHub Actions secret `DEPLOY_HOOK_URL`.
+v6 model artifacts to `main`; Streamlit Cloud redeploys automatically after the
+push. Daily v6 training can also publish one model per forecast horizon to the
+Hopsworks Model Registry.
+
+See [REPORT.md](REPORT.md) for the formal requirement-by-requirement project
+report.
 
 ---
 
@@ -434,7 +437,9 @@ See [Section 16](#16-phase-6--forecast-dashboard--explainability) for details.
 
 The dashboard performs one live ingestion attempt per five-minute cache
 window. Use **Refresh current data** for an immediate request. GitHub Actions
-also runs live ingestion hourly and daily feature/model refreshes at 02:30 UTC.
+also runs live ingestion and feature engineering hourly, then performs daily
+backfill, feature/model refresh, and Hopsworks model-registry publication at
+02:30 UTC.
 The live workflow needs the API secrets listed in Section 5 plus repository
 write permission for committing generated outputs. Hopsworks credentials are
 used by the dashboard and daily workflow for durable feature/model access.
@@ -1147,7 +1152,8 @@ Jupyter, VS Code, or Colab and run all cells; it auto-detects
 ## 15. Phase 5 — Model Training Pipeline
 
 `src/training_pipeline/` trains and compares forecasting models on the
-Phase 2/3 feature set and saves the best one to a model registry.
+Phase 2/3 feature set and saves the best one to local and optional Hopsworks
+model registries.
 
 ```
 Hopsworks Feature Store (or feature_df.csv)
@@ -1177,7 +1183,7 @@ Hopsworks Feature Store (or feature_df.csv)
   save_model_locally()   -- data/model_registry/<model>_<timestamp>/
       │                      (model + scaler + metadata.json)
       ▼
-  register_model_to_hopsworks()  -- optional, best-effort (--register-hopsworks)
+  register_model_to_hopsworks()  -- optional Hopsworks publication
 ```
 
 ### Why a time-based split, not a random shuffle
@@ -1256,6 +1262,11 @@ note) and valid credentials. This push is deliberately **best-effort**: any
 failure (missing package, bad credentials, network issue) is logged as a
 warning and returns `False` rather than raising, since the local registry
 copy is never dependent on it.
+
+The v6 daily forecast workflow uses `--register-hopsworks` to publish the
+three horizon-specific model/scaler bundles to the Hopsworks Model Registry.
+The dashboard tries those registered models first and falls back to the local
+v6 artifacts when the registry is unavailable.
 
 ### Validated Run
 

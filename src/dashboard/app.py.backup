@@ -131,43 +131,7 @@ def overview(df: pd.DataFrame, forecast, metadata: dict, live: bool) -> None:
     else:
         st.success("No elevated forecast alert was triggered by the current predictions.")
     with st.expander("Forecast model details"):
-        if metadata:
-            model_rows = []
-
-            for label, _ in HORIZONS:
-                info = metadata.get(label, {})
-                metrics = info.get("test_metrics", {})
-                baseline = info.get("naive_baseline", {})
-
-                model_rows.append(
-                    {
-                        "Horizon": label.replace("_avg", "").replace("day", "Day "),
-                        "Version": info.get("version", "Unknown"),
-                        "Train samples": info.get("n_train", "-"),
-                        "Test samples": info.get("n_test", "-"),
-                        "RMSE": round(float(metrics["rmse"]), 2)
-                        if metrics.get("rmse") is not None else "-",
-                        "MAE": round(float(metrics["mae"]), 2)
-                        if metrics.get("mae") is not None else "-",
-                        "R2": round(float(metrics["r2"]), 3)
-                        if metrics.get("r2") is not None else "-",
-                        "Baseline R2": round(float(baseline["r2"]), 3)
-                        if baseline.get("r2") is not None else "-",
-                    }
-                )
-
-            st.dataframe(
-                pd.DataFrame(model_rows),
-                hide_index=True,
-                width="stretch",
-            )
-
-            st.caption(
-                "Metrics are from the held-out test period. "
-                "The forecast uses the locally registered Ridge v6 models."
-            )
-        else:
-            st.info("Forecast model metadata is unavailable.")
+        st.json(metadata)
 
 
 def historical(df: pd.DataFrame) -> None:

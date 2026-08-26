@@ -67,30 +67,25 @@ def run_live_pipeline(
         run_timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         city_slug = str(merged_record["city"]).lower().replace(" ", "_")
 
-        if persist:
-            raw_path = settings.raw_data_dir / f"live_raw_{city_slug}_{run_timestamp}.json"
-            save_json(
-                {
-                    "weather_raw": weather_data,
-                    "aqi_raw": aqi_data,
-                    "merged": merged_record,
-                },
-                raw_path,
-            )
+        raw_path = settings.raw_data_dir / f"live_raw_{city_slug}_{run_timestamp}.json"
+        save_json(
+            {"weather_raw": weather_data, "aqi_raw": aqi_data, "merged": merged_record},
+            raw_path,
+        )
 
-            processed_path = settings.processed_data_dir / "aqi_dataset.csv"
-            save_csv([merged_record], processed_path)
+        processed_path = settings.processed_data_dir / "aqi_dataset.csv"
+        save_csv([merged_record], processed_path)
 
-            metadata = {
-                "run_time": datetime.now(timezone.utc).isoformat(),
-                "pipeline_type": "live",
-                "city": merged_record["city"],
-                "weather_source": merged_record.get("weather_source"),
-                "aqi_source": merged_record.get("aqi_source"),
-                "records": 1,
-                "status": "SUCCESS",
-            }
-            save_metadata(metadata, pipeline_type="live")
+        metadata = {
+            "run_time": datetime.now(timezone.utc).isoformat(),
+            "pipeline_type": "live",
+            "city": merged_record["city"],
+            "weather_source": merged_record.get("weather_source"),
+            "aqi_source": merged_record.get("aqi_source"),
+            "records": 1,
+            "status": "SUCCESS",
+        }
+        save_metadata(metadata, pipeline_type="live")
 
         logger.info("Live pipeline completed successfully")
         logger.info("=" * 60)

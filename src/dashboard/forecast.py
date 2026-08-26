@@ -76,6 +76,22 @@ def load_daily_avg_models(
                 exc,
             )
 
+<<<<<<< Updated upstream
+=======
+    Returns:
+        Tuple of `(models, metadata)` where `models[label] = (model, scaler)`
+        and `metadata[label]` holds the per-horizon metrics/feature list.
+
+    Raises:
+        TrainingError: If no run can be resolved or any artifact is missing.
+    """
+    if run_dir is None:
+        try:
+            return _load_daily_avg_models_from_hopsworks()
+        except Exception as exc:
+            logger.info("Hopsworks forecast model load unavailable; using local registry: %s", exc)
+
+>>>>>>> Stashed changes
     run_dir = Path(run_dir) if run_dir else _find_latest_run(registry_dir)
 
     if run_dir is None or not run_dir.is_dir():
@@ -121,7 +137,44 @@ def load_daily_avg_models(
     return models, metadata
 
 
+<<<<<<< Updated upstream
 def _load_daily_avg_models_from_hopsworks():
+=======
+def _load_daily_avg_models_from_hopsworks() -> tuple[dict[str, tuple[Any, Any]], dict[str, dict]]:
+    """Load the latest v6 horizon artifacts from Hopsworks Model Registry."""
+    from configs.config import load_hopsworks_settings
+    import hopsworks
+
+    settings = load_hopsworks_settings()
+    project = hopsworks.login(project=settings.project_name, api_key_value=settings.api_key)
+    model_registry = project.get_model_registry()
+    models: dict[str, tuple[Any, Any]] = {}
+    metadata: dict[str, dict] = {}
+    for label, _n_days in HORIZONS:
+        name = f"{HOPS_FORECAST_MODEL_PREFIX}_{label}"
+        candidates = model_registry.get_models(name=name)
+        if not candidates:
+            raise TrainingError(f"No Hopsworks model found for '{name}'.")
+        model_meta = max(candidates, key=lambda item: int(item.version))
+        download_dir = Path(model_meta.download())
+        model_dir = download_dir if download_dir.is_dir() else download_dir.parent
+        model_path = model_dir / f"{label}_model.joblib"
+        scaler_path = model_dir / f"{label}_scaler.joblib"
+        if not model_path.exists() or not scaler_path.exists():
+            raise TrainingError(f"Hopsworks model '{name}' lacks forecast artifacts.")
+        models[label] = (joblib.load(model_path), joblib.load(scaler_path))
+        metadata_path = model_dir / "metadata.json"
+        if not metadata_path.exists():
+            raise TrainingError(f"Hopsworks model '{name}' lacks metadata.json.")
+        with metadata_path.open("r", encoding="utf-8") as handle:
+            registered_metadata = json.load(handle)
+        metadata[label] = registered_metadata.get(label, {})
+    return models, metadata
+
+
+def _find_latest_run(registry_dir: Path | str) -> Path | None:
+    """Locate the most recent `ridge_3day_dailyavg_v*_*` run directory.
+>>>>>>> Stashed changes
 
     from configs.config import load_hopsworks_settings
     import hopsworks
@@ -284,6 +337,12 @@ def build_daily_features(
         )
         .reset_index()
     )
+<<<<<<< Updated upstream
+=======
+    # Live ingestion can resume after several days without observations.
+    # Empty calendar buckets would poison lag features and hide the live row.
+    daily = daily.reset_index(drop=True)
+>>>>>>> Stashed changes
 
     # Remove empty calendar days.
     daily = daily.dropna(
@@ -610,10 +669,49 @@ def fetch_future_weather(
 
     else:
 
+<<<<<<< Updated upstream
         anchor = (
             pd.Timestamp.utcnow()
             .normalize()
             - pd.Timedelta(days=3)
+=======
+    target_dates = [anchor + pd.Timedelta(days=h) for h in range(1, 4)]
+
+    # Archived daily weather (if the historical dataset exists).
+    archived: dict[pd.Timestamp, dict[str, float]] = {}
+    if hist_path.exists():
+        hist = pd.read_csv(hist_path)
+        hist["collection_timestamp"] = pd.to_datetime(
+    hist["collection_timestamp"],
+    format="mixed",
+    utc=True,
+)
+        for target in target_dates:
+            mask = (hist["collection_timestamp"] >= target) & (
+                hist["collection_timestamp"] < target + pd.Timedelta(days=1)
+            )
+            day = hist[mask]
+            if not day.empty:
+                archived[target] = {
+                    "wind": day["wind_speed"].mean(),
+                    "humid": day["humidity"].mean(),
+                    "temp": day["temperature"].mean(),
+                    "clouds": day["clouds"].mean(),
+                    "pressure": day["pressure"].mean(),
+                }
+
+    # OpenWeather forecast for any target day not covered by the archive.
+    forecast_daily = _fetch_openweather_daily()
+    for target in target_dates:
+        if target not in archived and target in forecast_daily.index:
+            archived[target] = forecast_daily.loc[target].to_dict()
+
+    missing = [t for t in target_dates if t not in archived]
+    if missing:
+        raise APIError(
+            "No archived or forecast weather available for target day(s): "
+            + ", ".join(d.date().isoformat() for d in missing)
+>>>>>>> Stashed changes
         )
 
     target_dates = [

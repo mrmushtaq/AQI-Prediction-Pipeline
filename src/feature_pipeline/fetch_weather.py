@@ -1,3 +1,4 @@
+
 """
 Weather data fetcher backed by OpenWeather (live) and Open-Meteo (historical).
 

@@ -36,16 +36,72 @@ def _read_csv(path: Path) -> pd.DataFrame:
 
 
 def load_historical_data() -> tuple[pd.DataFrame, str]:
-    candidates = [(PROCESSED_DIR / "feature_df.csv", "Engineered feature data"), (PROCESSED_DIR / "aqi_dataset_historical.csv", "Historical processed data"), (PROCESSED_DIR / "aqi_dataset.csv", "Live processed data")]
-    loaded = [(frame, path, label) for path, label in candidates[:2] if not (frame := _read_csv(path)).empty]
-    if not loaded:
-        loaded = [(frame, path, label) for path, label in candidates[2:] if not (frame := _read_csv(path)).empty]
-    if loaded:
-        frame, path, label = max(loaded, key=lambda item: item[0]["collection_timestamp"].max())
-        frame.attrs["path"] = str(path)
-        frame.attrs["source"] = label
-        return frame, label
-    return pd.DataFrame(), "Data unavailable"
+    """Load and combine historical + live processed observations.
+
+    Historical data provides the long-term feature history required by the
+    forecasting models. Live observations are appended separately by the
+    dashboard, so this function focuses on the persisted datasets.
+    """
+    candidates = [
+        (PROCESSED_DIR / "aqi_dataset_historical.csv", "Historical processed data"),
+        (PROCESSED_DIR / "feature_df.csv", "Engineered feature data"),
+        (PROCESSED_DIR / "aqi_dataset.csv", "Live processed data"),
+    ]
+
+    frames = []
+
+    for path, label in candidates:
+        frame = _read_csv(path)
+
+        if frame.empty:
+            continue
+
+        if "collection_timestamp" not in frame.columns:
+            continue
+
+        frame["collection_timestamp"] = pd.to_datetime(
+            frame["collection_timestamp"],
+            utc=True,
+            errors="coerce",
+        )
+
+        frame = frame.dropna(subset=["collection_timestamp"]).copy()
+        frame["_source_file"] = label
+
+        frames.append(frame)
+
+    if not frames:
+        return pd.DataFrame(), "Data unavailable"
+
+    # Combine all available persisted datasets.
+    combined = pd.concat(frames, ignore_index=True, sort=False)
+
+    # Remove exact duplicate observations.
+    duplicate_keys = [
+        column
+        for column in ["city", "collection_timestamp"]
+        if column in combined.columns
+    ]
+
+    if duplicate_keys:
+        combined = combined.drop_duplicates(
+            subset=duplicate_keys,
+            keep="last",
+        )
+    else:
+        combined = combined.drop_duplicates()
+
+    # Chronological order is critical for lag/rolling features.
+    combined = (
+        combined
+        .sort_values("collection_timestamp")
+        .reset_index(drop=True)
+    )
+
+    combined.attrs["path"] = "combined processed datasets"
+    combined.attrs["source"] = "Historical + engineered + live processed data"
+
+    return combined, "Historical + live processed data"
 
 
 def load_metadata() -> list[dict[str, Any]]:
