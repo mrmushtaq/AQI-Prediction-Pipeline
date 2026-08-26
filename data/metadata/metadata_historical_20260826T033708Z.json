@@ -1,0 +1,19 @@
+{
+  "run_start": "2026-08-26T03:36:21.238695+00:00",
+  "run_end": "2026-08-26T03:37:08.106400+00:00",
+  "execution_time_seconds": 46.87,
+  "pipeline_type": "historical",
+  "city": "Sukkur",
+  "weather_source": "Open-Meteo Archive",
+  "aqi_source": "OpenAQ-v3, OpenMeteo-AirQuality",
+  "interval_hours": 1,
+  "total_requested_steps": 48,
+  "successful_records": 24,
+  "skipped_duplicates": 24,
+  "error_count": 0,
+  "start_date": "2026-08-25",
+  "end_date": "2026-08-26",
+  "force_mode": false,
+  "errors": [],
+  "status": "SUCCESS"
+}
