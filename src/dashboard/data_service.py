@@ -54,7 +54,6 @@ def load_metadata() -> list[dict[str, Any]]:
         try:
             with path.open(encoding="utf-8") as handle:
                 item = json.load(handle)
-            item["_path"] = str(path)
             records.append(item)
         except (OSError, json.JSONDecodeError):
             continue

@@ -18,8 +18,22 @@ def test_aqi_classification_and_trend_are_centralized():
     assert alert_level(150) == "Unhealthy for sensitive groups"
 
 
-def test_real_historical_data_is_selected_when_available():
+def test_real_historical_data_is_selected_when_available(tmp_path, monkeypatch):
+    import src.dashboard.data_service as service
+
+    historical = pd.DataFrame(
+        {
+            "collection_timestamp": pd.to_datetime(
+                ["2026-01-01", "2026-01-02"], utc=True
+            ),
+            "aqi": [50, 75],
+        }
+    )
+    historical.to_csv(tmp_path / "aqi_dataset_historical.csv", index=False)
+    monkeypatch.setattr(service, "PROCESSED_DIR", tmp_path)
+
     frame, source = load_historical_data()
+
     assert not frame.empty
     assert source == "Historical processed data"
     assert len(frame) > 0

@@ -162,7 +162,6 @@ def models() -> None:
             item, metrics, baseline = run.get(label, {}), run.get(label, {}).get("test_metrics", {}), run.get(label, {}).get("naive_baseline", {})
             rows.append({"horizon": label, "target": item.get("target", "N/A"), "features": len(item.get("feature_cols", [])), "RMSE": metrics.get("rmse", "N/A"), "MAE": metrics.get("mae", "N/A"), "R2": metrics.get("r2", "N/A"), "beats baseline": metrics.get("rmse", float("inf")) < baseline.get("rmse", float("inf"))})
         st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
-        st.caption(f"Registry path: {run.get('run_dir')}")
 
 
 def explain(df: pd.DataFrame) -> None:
