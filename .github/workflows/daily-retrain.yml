@@ -93,12 +93,12 @@ jobs:
           HOPSWORKS_HOST: ${{ secrets.HOPSWORKS_HOST }}
         run: python -m src.feature_pipeline.feature_store
 
-      - name: Retrain v6 models
+      - name: Retrain v6 models and publish to Hopsworks Model Registry
         env:
           HOPSWORKS_API_KEY: ${{ secrets.HOPSWORKS_API_KEY }}
           HOPSWORKS_PROJECT_NAME: ${{ secrets.HOPSWORKS_PROJECT_NAME }}
           HOPSWORKS_HOST: ${{ secrets.HOPSWORKS_HOST }}
-        run: python -m src.training_pipeline.train_v6 --source hopsworks
+        run: python -m src.training_pipeline.train_v6 --source hopsworks --register-hopsworks
 
       # NOT continue-on-error: if fw_* stops adding real signal over
       # historical-only features, that's a meaningful regression worth
@@ -127,8 +127,3 @@ jobs:
             git push origin HEAD:${{ github.ref_name }}
           fi
 
-      - name: Trigger dashboard redeploy
-        if: ${{ secrets.DEPLOY_HOOK_URL != '' }}
-        env:
-          DEPLOY_HOOK_URL: ${{ secrets.DEPLOY_HOOK_URL }}
-        run: curl --fail --silent --show-error -X POST "$DEPLOY_HOOK_URL"
