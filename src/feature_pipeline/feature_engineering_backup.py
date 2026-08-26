@@ -132,10 +132,7 @@ def _load_dataset(input_path: Path) -> pd.DataFrame:
         )
 
     df["collection_timestamp"] = pd.to_datetime(
-        df["collection_timestamp"].astype(str).str.strip(),
-        format="mixed",
-        utc=True,
-        errors="coerce",
+        df["collection_timestamp"], utc=True, errors="coerce"
     )
     before = len(df)
     df = df.dropna(subset=["collection_timestamp"])
@@ -411,108 +408,48 @@ def build_features(
     df = _add_target(df, horizon_steps)
 
     if drop_incomplete_rows:
-        # Only require features from source columns that have sufficient
-        # coverage across the dataset.
-        #
-        # Some sources do not provide PM10. In this dataset PM10 has only
-        # a handful of real observations, so requiring PM10 lag/rolling
-        # features would incorrectly delete the entire training dataset.
-        #
-        # Core columns with good coverage are required. Sparse optional
-        # pollutants are allowed to remain NaN.
+        feature_cols = [
+            c for c in df.columns
+            if c.endswith("_change_rate") or "_lag_" in c or "_rolling_std_" in c
+        ]
+        candidate_required_cols = feature_cols + ["aqi_target"]
 
-        required_cols = ["aqi_target"]
-
-        # A source column must have at least 90% real observations before
-        # its derived features are considered mandatory.
-        COVERAGE_THRESHOLD = 0.90
-
-        available_source_columns = []
-
-        for col in CHANGE_RATE_COLUMNS:
-            if col not in df.columns:
-                continue
-
-            coverage = df[col].notna().mean()
-
-            if coverage >= COVERAGE_THRESHOLD:
-                available_source_columns.append(col)
-
-                logger.info(
-                    "Using '%s' derived features: %.1f%% source coverage",
-                    col,
-                    coverage * 100,
-                )
+        # A derived column (e.g. pm10_lag_1) can be NaN for two different
+        # reasons: (a) not enough history yet for *this* row (the normal,
+        # expected case at the start/end of the series -- these rows
+        # should be dropped), or (b) the underlying source column (e.g.
+        # pm10) has NO real data anywhere in the dataset, because the
+        # station/source simply doesn't measure that pollutant (see
+        # Section 10 of the README -- pm10/co/so2/no2/o3 are allowed to be
+        # null). In case (b), requiring that derived column to be non-null
+        # would drop every row in the dataset, which is never the intent.
+        # So: only enforce completeness on derived columns that have at
+        # least *some* real (non-null) values somewhere in the dataset.
+        required_cols = []
+        skipped_cols = []
+        for col in candidate_required_cols:
+            if df[col].notna().any():
+                required_cols.append(col)
             else:
-                logger.warning(
-                    "Skipping '%s' derived features: only %.1f%% source coverage",
-                    col,
-                    coverage * 100,
-                )
+                skipped_cols.append(col)
 
-        # Change-rate and lag features for well-covered source columns.
-        for col in available_source_columns:
-            change_col = f"{col}_change_rate"
-
-            if change_col in df.columns:
-                required_cols.append(change_col)
-
-            for lag in LAG_STEPS + SEASONAL_LAG_STEPS:
-                lag_col = f"{col}_lag_{lag}"
-
-                if lag_col in df.columns:
-                    required_cols.append(lag_col)
-
-        # Rolling features for well-covered source columns.
-        for col in ROLLING_COLUMNS:
-            if col not in df.columns:
-                continue
-
-            coverage = df[col].notna().mean()
-
-            if coverage < COVERAGE_THRESHOLD:
-                logger.warning(
-                    "Skipping rolling features for '%s': only %.1f%% "
-                    "source coverage",
-                    col,
-                    coverage * 100,
-                )
-                continue
-
-            for window in ROLLING_WINDOWS_STEPS:
-                label = ROLLING_WINDOW_LABELS.get(
-                    window,
-                    f"{window}steps",
-                )
-
-                mean_col = f"{col}_rolling_mean_{label}"
-                std_col = f"{col}_rolling_std_{label}"
-
-                if mean_col in df.columns:
-                    required_cols.append(mean_col)
-
-                if std_col in df.columns:
-                    required_cols.append(std_col)
-
-        # Remove duplicates while preserving order.
-        required_cols = list(dict.fromkeys(required_cols))
-
-        logger.info(
-            "Feature engineering: required %d columns for completeness",
-            len(required_cols),
-        )
+        if skipped_cols:
+            logger.warning(
+                "Feature engineering: %d derived column(s) are entirely NaN "
+                "(underlying source data not available for this location/"
+                "source) and were excluded from the completeness check: %s",
+                len(skipped_cols),
+                ", ".join(skipped_cols),
+            )
 
         before = len(df)
-
         df = df.dropna(subset=required_cols)
-
         logger.info(
-            "Feature engineering: dropped %d rows lacking required "
-            "lag/rolling/target history (kept %d rows)",
+            "Feature engineering: dropped %d rows lacking full lag/rolling/target "
+            "history (kept %d rows)",
             before - len(df),
             len(df),
         )
-
 
     df = df.reset_index(drop=True)
     return df

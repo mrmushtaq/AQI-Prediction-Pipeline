@@ -49,7 +49,7 @@ import pandas as pd
 from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.preprocessing import StandardScaler
-
+from src.training_pipeline.model_registry import register_model_to_hopsworks
 from configs.config import PROJECT_ROOT
 from src.common.logger import get_logger
 from src.dashboard.forecast import (
@@ -61,7 +61,6 @@ from src.dashboard.forecast import (
 import argparse
 
 from src.training_pipeline.data_loader import DEFAULT_FEATURE_DF_PATH, load_features
-from src.training_pipeline.model_registry import register_model_to_hopsworks
 
 logger = get_logger(__name__)
 
@@ -159,20 +158,9 @@ def main() -> None:
     
 
     df = load_features(source=args.source, local_path=DEFAULT_FEATURE_DF_PATH)
-
-    df["collection_timestamp"] = pd.to_datetime(
-        df["collection_timestamp"],
-        utc=True,
-    )
-
-    train_end = pd.Timestamp(TRAIN_END_DATE, tz="UTC")
-
-    logger.info(
-        "Loaded %d hourly rows (source=%s)",
-        len(df),
-        args.source,
-    )
-    df = df[df["collection_timestamp"] <= train_end].reset_index(drop=True)
+    df["collection_timestamp"] = pd.to_datetime(df["collection_timestamp"])
+    logger.info("Loaded %d hourly rows (source=%s)", len(df), args.source)
+    df = df[df["collection_timestamp"] <= TRAIN_END_DATE].reset_index(drop=True)
     logger.info(
         "Truncated to training endpoint %s (%d rows) for a v5-comparable holdout",
         TRAIN_END_DATE,
@@ -260,13 +248,6 @@ def main() -> None:
             "test_metrics_perfect_future_weather_DO_NOT_REPORT": metrics_leaky_eval,
             "leakage_r2_gap": round(metrics_leaky_eval["r2"] - metrics["r2"], 4),
         }
-        if args.register_hopsworks:
-            register_model_to_hopsworks(
-                run_dir=out_dir,
-                model_name=f"ridge_{label}_v6",
-                metrics=metrics,
-            )
-        
         logger.info(
             "%s: realistic R2=%.4f RMSE=%.2f | perfect-future-weather R2=%.4f "
             "(leakage gap=%.4f) | naive R2=%.4f | test %s..%s, %d features",
