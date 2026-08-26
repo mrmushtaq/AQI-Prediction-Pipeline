@@ -5,6 +5,13 @@ on:
     - cron: "30 2 * * *"  # 02:30 UTC daily, after the day's hourly runs
   workflow_dispatch: {}
 
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-retrain
+  cancel-in-progress: false
+
 jobs:
   retrain:
     runs-on: ubuntu-latest
@@ -109,3 +116,19 @@ jobs:
           name: aqi-v6-models-${{ github.run_id }}
           path: data/model_registry/ridge_3day_dailyavg_v6_*/
           retention-days: 30
+
+      - name: Commit refreshed data and models
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f data/processed/aqi_dataset_historical.csv data/processed/feature_df.csv data/metadata/*.json data/model_registry/ridge_3day_dailyavg_v6_*
+          if ! git diff --cached --quiet; then
+            git commit -m "data: refresh historical features and v6 models"
+            git push origin HEAD:${{ github.ref_name }}
+          fi
+
+      - name: Trigger dashboard redeploy
+        if: ${{ secrets.DEPLOY_HOOK_URL != '' }}
+        env:
+          DEPLOY_HOOK_URL: ${{ secrets.DEPLOY_HOOK_URL }}
+        run: curl --fail --silent --show-error -X POST "$DEPLOY_HOOK_URL"

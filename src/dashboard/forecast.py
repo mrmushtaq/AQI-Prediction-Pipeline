@@ -204,6 +204,9 @@ def build_daily_features(
         )
         .reset_index()
     )
+    # Live ingestion can resume after several days without observations.
+    # Empty calendar buckets would poison lag features and hide the live row.
+    daily = daily.dropna(subset=["aqi"]).reset_index(drop=True)
 
     daily["day"] = daily["collection_timestamp"].dt.dayofyear
     daily["doy_sin"] = np.sin(2 * np.pi * daily["day"] / 365.25)
@@ -331,7 +334,10 @@ def make_forecast(
         scaled = scaler.transform(X)
         preds[label] = float(model.predict(scaled)[0])
 
-    forecast_date = last["collection_timestamp"].strftime("%Y-%m-%d")
+    # The anchor row is today's observed AQI; Day 1 is the following full day.
+    forecast_date = (
+        pd.Timestamp(last["collection_timestamp"]) + pd.Timedelta(days=1)
+    ).strftime("%Y-%m-%d")
 
     logger.info(
         "Forecast for %s: day1=%.1f day2=%.1f day3=%.1f",

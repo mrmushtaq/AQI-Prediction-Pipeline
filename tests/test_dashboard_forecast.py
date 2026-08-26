@@ -162,9 +162,23 @@ def test_make_forecast_returns_plausible_values(tmp_path):
     assert forecast.day1_avg > 0
     assert forecast.day2_avg > 0
     assert forecast.day3_avg > 0
-    assert forecast.forecast_date == df["collection_timestamp"].max().floor("D").strftime("%Y-%m-%d")
+    expected_date = df["collection_timestamp"].max().floor("D") + pd.Timedelta(days=1)
+    assert forecast.forecast_date == expected_date.strftime("%Y-%m-%d")
     assert forecast.run_dir == str(run_dir)
     assert len(forecast.feature_cols) >= 40
+
+
+def test_make_forecast_uses_latest_observation_after_date_gap(tmp_path):
+    run_dir = _make_v5_run(tmp_path)
+    df = _make_hourly_df()
+    latest_day = pd.Timestamp("2026-08-26")
+    latest = df.iloc[-1].copy()
+    latest["collection_timestamp"] = latest_day
+    df = pd.concat([df, pd.DataFrame([latest])], ignore_index=True)
+
+    forecast = make_forecast(df, run_dir=run_dir)
+
+    assert forecast.forecast_date == (latest_day + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
 
 
 def test_make_forecast_raises_with_insufficient_history(tmp_path):

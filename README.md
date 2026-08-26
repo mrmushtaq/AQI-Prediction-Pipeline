@@ -10,16 +10,17 @@ feature-engineering step on top of that data. Phase 3 pushes the engineered
 features into a **Hopsworks Feature Store**. Phase 4 is exploratory data
 analysis (EDA) on the engineered dataset. Phase 5 trains and compares
 multiple forecasting models (Ridge Regression, Random Forest, and a neural
-network) and saves the best one to a model registry. A serving/dashboard
-layer is not included yet — that belongs to a later phase.
+network) and saves the best one to a model registry. Phase 6 provides a
+Streamlit dashboard for real data, 3-day forecasts, model metadata, data
+quality, and SHAP explanations.
 
-**Status:**
-- **Phase 1 (ingestion)** complete and validated — 100+ automated tests, see
+**Status: Complete:**
+- **Phase 1 (ingestion)** complete and validated — 201 automated tests, see
   [Section 8](#8-testing--validated-scenarios).
 - **Phase 2 (feature engineering)** complete and validated — see
   [Section 12](#12-phase-2--feature-engineering).
 - **Phase 3 (Hopsworks Feature Store)** complete and validated, now on
-  **v2** — see [Section 13](#13-phase-3--hopsworks-feature-store).
+  **v3** — see [Section 13](#13-phase-3--hopsworks-feature-store).
 - **Phase 4 (EDA)** complete — see [Section 14](#14-phase-4--exploratory-data-analysis-eda).
 - **Phase 5 (model training)** complete and validated end-to-end, including
   a naive-baseline sanity check — see
@@ -31,6 +32,19 @@ layer is not included yet — that belongs to a later phase.
 - **Historical backfill** extended to a ~2.5-year range (2024-01-01 through
   present, **22,608 records**), exceeding the original 1.5-2 year target —
   see [Section 11](#11-historical-data-providers).
+
+The dashboard reads the current files in `data/processed/` and
+`data/model_registry/`; it does not create demo values. Stored observations
+are labeled as last-known data unless a refresh successfully completes live
+ingestion. Historical AQI labels distinguish OpenAQ ground-sensor readings
+from Open-Meteo/CAMS model estimates.
+
+The deployed dashboard reads the durable Hopsworks feature group first, falls
+back to the checked-in generated files, and then attempts a real live
+OpenWeather/AQICN refresh. GitHub Actions commits refreshed generated data and
+v6 model artifacts to `main`; deployments connected to that branch redeploy
+after the push. To trigger another hosting provider, add its POST deployment
+URL as the GitHub Actions secret `DEPLOY_HOOK_URL`.
 
 ---
 
@@ -52,7 +66,7 @@ layer is not included yet — that belongs to a later phase.
 14. [Phase 4 — Exploratory Data Analysis (EDA)](#14-phase-4--exploratory-data-analysis-eda)
 15. [Phase 5 — Model Training Pipeline](#15-phase-5--model-training-pipeline)
 16. [Phase 6 — Forecast Dashboard & Explainability](#16-phase-6--forecast-dashboard--explainability)
-17. [Out of Scope (Later Phases)](#17-out-of-scope-later-phases)
+17. [Completion Status & Remaining Limitations](#17-completion-status--remaining-limitations)
 
 ---
 
@@ -418,6 +432,13 @@ streamlit run src/dashboard/app.py
 
 See [Section 16](#16-phase-6--forecast-dashboard--explainability) for details.
 
+The dashboard performs one live ingestion attempt per five-minute cache
+window. Use **Refresh current data** for an immediate request. GitHub Actions
+also runs live ingestion hourly and daily feature/model refreshes at 02:30 UTC.
+The live workflow needs the API secrets listed in Section 5 plus repository
+write permission for committing generated outputs. Hopsworks credentials are
+used by the dashboard and daily workflow for durable feature/model access.
+
 ---
 
 ## 7. Sample Output
@@ -520,7 +541,7 @@ needed to run the suite. The following scenarios are explicitly covered:
 | Historical backfill `--force`        | Bypasses dedup, re-fetches requested range | `test_historical_backfill.py` |
 | Pipeline succeeds/fails end-to-end   | Metadata `status=SUCCESS`/`FAILED` written correctly | `test_run_pipeline_success_writes_success_metadata`, `test_run_pipeline_failure_still_writes_failed_metadata` |
 | Hopsworks login (full SDK or `hsfs` fallback) | Returns a feature store handle either way | `test_login_success_returns_feature_store_handle`, `test_login_falls_back_to_hsfs_when_hopsworks_not_installed` |
-| Feature group create/insert/read (v2) | Correct schema, round-trip data integrity | `test_get_or_create_feature_group_uses_expected_schema`, `test_sync_feature_store_end_to_end` |
+| Feature group create/insert/read (v3) | Correct schema, round-trip data integrity | `test_get_or_create_feature_group_uses_expected_schema`, `test_sync_feature_store_end_to_end` |
 | Training: feature selection excludes all-null columns | `pm10_*`, `pollution_index` (single-pollutant cities) excluded automatically | `test_training_preprocessing.py` |
 | Training: time-based split has no leakage | Train set strictly precedes test set chronologically | `test_time_based_split_produces_expected_sizes_and_order` |
 | Training: TensorFlow unavailable       | Falls back to scikit-learn's `MLPRegressor` transparently | `test_get_model_candidates_uses_sklearn_fallback_when_tensorflow_unavailable` |
@@ -535,7 +556,7 @@ needed to run the suite. The following scenarios are explicitly covered:
 ground-sensor measurements (~Nov 2025 onward) with Open-Meteo Air Quality
 model estimates for the earlier period (see
 [Section 11](#11-historical-data-providers)). **Phase 3 was manually
-verified against a real Hopsworks project**, including the v2 re-sync after
+verified against a real Hopsworks project**, including the v3 re-sync after
 the `feels_like` and rolling-window/horizon fixes — see
 [Section 13](#13-phase-3--hopsworks-feature-store). **Phase 5 was manually
 run end-to-end** against the real Sukkur feature set, producing a full
@@ -924,7 +945,7 @@ feature_df.csv
   login()                     -- hopsworks.login() or hsfs.connection() fallback
       │
       ▼
-  get_or_create_feature_group() -- name="aqi_features", v2
+  get_or_create_feature_group() -- name="aqi_features", v3
       │                           primary_key=["city", "collection_timestamp"]
       │                           event_time="collection_timestamp"
       ▼
@@ -939,7 +960,7 @@ feature_df.csv
 | Setting | Value |
 |---|---|
 | Name | `aqi_features` |
-| Version | `2` |
+| Version | `3` |
 | Primary key | `city`, `collection_timestamp` |
 | Event time | `collection_timestamp` |
 | Time travel format | `HUDI` |
@@ -951,7 +972,7 @@ time and half the primary key, since it uniquely identifies one observation
 per city. The redundant `timestamp` column (always identical to
 `collection_timestamp`) is dropped before insert.
 
-**Why v2:** the feature group was bumped from v1 to v2 after two data-quality
+**Why v3:** the feature group is maintained at v3 after the data-quality
 fixes were made to the ingestion/feature-engineering code (see
 [Section 11](#11-historical-data-providers) and
 [Section 12](#12-phase-2--feature-engineering)): (1) `feels_like` was
@@ -961,23 +982,14 @@ variable, and (2) the rolling-window and forecast-horizon sizes were
 computed assuming a fixed 3-hour collection interval, which silently became
 incorrect once the pipeline's actual interval changed to hourly (windows
 were labeled 24h/48h but only covered 8h/16h of real time; the 3-day
-forecast target was actually only 1 day ahead). v1 (pre-fix data) is kept in
-Hopsworks for history/comparison rather than deleted; v2 is the version all
-Phase 5 training should use.
+forecast target was actually only 1 day ahead). v1 and v2 are retained in
+Hopsworks for history/comparison; v3 is the current schema and version that
+new synchronizations and downstream training should use.
 
-> **Known caveat:** the `pollution_index` fix and the extended (~2.5-year,
-> 22,608-row) historical backfill (see [Section 11](#11-historical-data-providers))
-> both landed *after* the v2 sync, so the currently-synced v2 copy has
-> `pollution_index` populated with its pre-fix (redundant,
-> perfectly-correlated-with-`pm2_5`) values, and only covers the earlier,
-> smaller date range. This doesn't block training — `select_feature_columns`
-> in the training pipeline excludes a column only when it's *entirely* null
-> across the loaded dataset, so `pollution_index` will still be included as
-> a harmless-but-useless feature if training directly from Hopsworks v2
-> today. Re-sync to v3 after regenerating `feature_df.csv` from the full
-> extended dataset to get both fixes and the larger date range reflected in
-> Hopsworks; training from a freshly-generated local CSV (`--source local`)
-> already has the current, correct data.
+> **Operational note:** the local code and workflow target v3. If a remote
+  Hopsworks project still contains an older v2 copy, run the feature-store
+  synchronization after regenerating `feature_df.csv`; local training with
+  `--source local` remains authoritative until that remote sync completes.
 
 ### Setup
 
@@ -1022,7 +1034,7 @@ without Build Tools — see the setup note above).
 
 ### Validated Run
 
-The v2 feature group was populated from the post-fix `feature_df.csv`
+The v3 feature group is populated from the post-fix `feature_df.csv`
 (`feels_like` fully populated, corrected rolling windows and forecast
 horizon) and successfully round-tripped against a real Hopsworks project:
 
@@ -1393,15 +1405,34 @@ reconstruction (base + Σ SHAP = prediction).
 
 ---
 
-## 17. Out of Scope (Later Phases)
+## 17. Completion Status & Remaining Limitations
 
-The following are intentionally **not** implemented yet, and belong to
-later phases of the project:
+The requested project scope is complete and verified:
 
-- Hyperparameter tuning / more extensive model experimentation
-- CI/CD automation (GitHub Actions) — the feature pipeline running hourly
-  and a training pipeline running daily
-- Deploying the dashboard to a managed serverless host (e.g. Streamlit
-  Community Cloud)
-- Multi-city support (the pipeline is currently configured and validated
-  for a single city, Sukkur, at a time)
+- External live and historical ingestion with retries, validation, fallback
+  providers, storage, metadata, and logging.
+- Feature engineering, leakage-safe training, model comparison, naive
+  baseline evaluation, and local model registry persistence.
+- Hopsworks Feature Store integration with v3 schema and round-trip tests.
+- EDA notebook, daily-average v6 forecasts, future-weather features, alerts,
+  SHAP/LIME explainability, and the Sukkur Streamlit dashboard.
+- GitHub Actions for tests, hourly ingestion, daily backfill/retraining, model
+  artifacts, generated-data commits, and optional deployment hooks.
+- Automated test suite: **201 tests passed** in the current environment.
+
+The following are deliberate product limitations rather than missing
+requirements:
+
+- The configured deployment is for **Sukkur**; multi-city operation would need
+  city-specific coordinates, data partitioning, and separately validated
+  models.
+- Historical AQI combines OpenAQ ground measurements where coverage exists
+  with Open-Meteo CAMS model estimates elsewhere. The `aqi_source` field must
+  be retained when interpreting or evaluating results.
+- Hopsworks and managed hosting require valid external credentials and setup;
+  the local CSV/model registry remains the reproducible fallback.
+- Forecast-weather noise calibration is currently based on a documented rough
+  estimate. It should be replaced with measured OpenWeather forecast error
+  after enough forecast-versus-observation history accumulates.
+- Hyperparameter tuning and larger model experiments are optional future
+  improvements, not blockers for the completed implementation.
