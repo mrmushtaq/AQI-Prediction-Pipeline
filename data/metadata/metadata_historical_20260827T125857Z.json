@@ -1,0 +1,19 @@
+{
+  "run_start": "2026-08-27T12:58:56.861225+00:00",
+  "run_end": "2026-08-27T12:58:57.146202+00:00",
+  "execution_time_seconds": 0.28,
+  "pipeline_type": "historical",
+  "city": "Sukkur",
+  "weather_source": "Unknown",
+  "aqi_source": "Unknown",
+  "interval_hours": 1,
+  "total_requested_steps": 48,
+  "successful_records": 0,
+  "skipped_duplicates": 48,
+  "error_count": 0,
+  "start_date": "2026-08-26",
+  "end_date": "2026-08-27",
+  "force_mode": false,
+  "errors": [],
+  "status": "SUCCESS"
+}
