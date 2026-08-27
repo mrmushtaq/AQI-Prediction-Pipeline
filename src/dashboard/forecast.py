@@ -1,4 +1,4 @@
-"""Daily-average AQI forecasting models (v5/v6).
+﻿"""Daily-average AQI forecasting models (v5/v6).
 
 Reproduces the feature-engineering recipe and model loading used by
 `notebooks/train_final_3day_models_v5.ipynb` (and its v6 successor) so the
@@ -313,18 +313,22 @@ def make_forecast(
 
     first_label = HORIZONS[0][0]
 
-    # Each horizon may use a different feature subset (v6 includes only the
-    # future-weather days it needs). Require every horizon's features to be
-    # non-null for the anchor row.
-    all_feature_cols = sorted({c for m in metadata.values() for c in m["feature_cols"]})
-    scoreable = daily.dropna(subset=all_feature_cols)
-    if scoreable.empty:
+    # Each v6 horizon has its own feature subset.
+    # Score each horizon using only the features required by that model.
+    scoreable_by_horizon = {
+        label: daily.dropna(subset=metadata[label]["feature_cols"])
+        for label, _n_days in HORIZONS
+    }
+    if all(rows.empty for rows in scoreable_by_horizon.values()):
         raise TrainingError(
             "No daily row has complete feature history to score. Need ~30+ days "
             "of hourly data before the rolling features are populated."
         )
 
-    last = scoreable.iloc[-1]
+    last = max(
+        (rows.iloc[-1] for rows in scoreable_by_horizon.values() if not rows.empty),
+        key=lambda row: row["collection_timestamp"],
+    )
 
     preds: dict[str, float] = {}
     for label, _n_days in HORIZONS:
@@ -353,7 +357,7 @@ def make_forecast(
         day1_avg=preds["day1_avg"],
         day2_avg=preds["day2_avg"],
         day3_avg=preds["day3_avg"],
-        feature_cols=sorted(all_feature_cols),
+        feature_cols=sorted(_feature_cols),
         model_metadata=metadata,
     )
 

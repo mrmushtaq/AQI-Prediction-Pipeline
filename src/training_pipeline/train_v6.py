@@ -1,4 +1,4 @@
-"""Train the v6 daily-average AQI models (Ridge + future-weather features).
+﻿"""Train the v6 daily-average AQI models (Ridge + future-weather features).
 
 v6 extends the v5 recipe (46 daily features) with future-weather features
 (`fw_wind/humid/temp/clouds/pressure` for the next 1..3 days).
@@ -91,7 +91,7 @@ PERCENT_BOUNDED_VARS = {"humid", "clouds"}  # clip to [0, 100] after noise
 
 
 def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, float]:
-    """RMSE, MAE and RÂ² for a held-out evaluation."""
+    """RMSE, MAE and RÃ‚Â² for a held-out evaluation."""
     return {
         "rmse": float(np.sqrt(mean_squared_error(y_true, y_pred))),
         "mae": float(mean_absolute_error(y_true, y_pred)),
@@ -157,10 +157,7 @@ def main() -> None:
 
     df = load_features(source=args.source, local_path=DEFAULT_FEATURE_DF_PATH)
 
-    df["collection_timestamp"] = pd.to_datetime(
-        df["collection_timestamp"],
-        utc=True,
-    )
+    df["collection_timestamp"] = pd.to_datetime(df["collection_timestamp"], format="mixed", utc=True)
 
     train_end = pd.Timestamp(TRAIN_END_DATE, tz="UTC")
 
@@ -282,3 +279,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
