@@ -21,15 +21,30 @@ from src.common.logger import get_logger
 
 logger = get_logger(__name__)
 
+# ~30 days of hourly data -- matches the Daily Backfill + Retrain workflow's
+# own sanity-check threshold before it rebuilds feature_df.csv. Hopsworks
+# can return a non-empty but incomplete frame (e.g. after a failed/partial
+# materialization job), which `frame.empty` alone wouldn't catch -- that
+# silently skipped the fallback to the good checked-in historical data and
+# caused "No daily row has complete feature history" even after the local
+# files were fixed.
+MIN_ROWS_FOR_FORECAST = 720
+
 
 @st.cache_data(ttl=300, show_spinner=False)
 def load_data() -> pd.DataFrame:
     try:
         frame = load_hopsworks_data()
     except Exception:
+        logger.exception("Hopsworks data load failed")
         frame = pd.DataFrame()
 
-    if frame.empty:
+    if len(frame) < MIN_ROWS_FOR_FORECAST:
+        logger.warning(
+            "Hopsworks returned only %d rows (need >= %d) -- "
+            "falling back to checked-in historical/processed data",
+            len(frame), MIN_ROWS_FOR_FORECAST,
+        )
         frame, _ = load_historical_data()
 
     frame.attrs["live_status"] = "unavailable"
