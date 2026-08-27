@@ -1,4 +1,4 @@
-# Pearls AQI Predictor — Project Report
+# Sukkur AQI Predictor — Project Report
 
 **10Pearls Shine Data Sciences Internship**
 **Project:** AQI Prediction System — Sukkur, Pakistan
