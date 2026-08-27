@@ -1,12 +1,25 @@
 """Production dashboard for the real Sukkur AQI Predictor artifacts."""
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
+
+# Streamlit Cloud's Secrets panel populates st.secrets, not os.environ. The
+# rest of this project (configs/config.py, feature_store.py) reads config
+# via os.getenv(), so bridge st.secrets into the real environment here --
+# before any Hopsworks/settings code below can run and fall back to wrong
+# defaults (e.g. HOPSWORKS_HOST silently defaulting to c.app.hopsworks.ai
+# instead of the configured eu-west.cloud.hopsworks.ai).
+try:
+    for _key, _value in st.secrets.items():
+        os.environ.setdefault(_key, str(_value))
+except Exception:
+    pass  # No secrets.toml locally / secrets not configured -- fine, .env covers local runs.
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
