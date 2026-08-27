@@ -1,4 +1,3 @@
-
 """Train the v6 daily-average AQI models (Ridge + future-weather features).
 
 v6 extends the v5 recipe (46 daily features) with future-weather features
@@ -61,11 +60,7 @@ from src.dashboard.forecast import (
 import argparse
 
 from src.training_pipeline.data_loader import DEFAULT_FEATURE_DF_PATH, load_features
-<<<<<<< Updated upstream
-from src.training_pipeline.model_registry import register_model_to_hopsworks
-=======
 from src.training_pipeline.model_registry import register_forecast_models_to_hopsworks
->>>>>>> Stashed changes
 
 logger = get_logger(__name__)
 
@@ -96,7 +91,7 @@ PERCENT_BOUNDED_VARS = {"humid", "clouds"}  # clip to [0, 100] after noise
 
 
 def compute_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, float]:
-    """RMSE, MAE and R² for a held-out evaluation."""
+    """RMSE, MAE and RÂ² for a held-out evaluation."""
     return {
         "rmse": float(np.sqrt(mean_squared_error(y_true, y_pred))),
         "mae": float(mean_absolute_error(y_true, y_pred)),
@@ -151,17 +146,11 @@ def main() -> None:
         default="local",
         help="Where to load engineered features from (default: local CSV)",
     )
-<<<<<<< Updated upstream
-
     parser.add_argument(
         "--register-hopsworks",
         action="store_true",
-        help="Register the best trained v6 model to Hopsworks Model Registry",
+        help="Register the v6 forecast models to Hopsworks Model Registry",
     )
-
-=======
-    parser.add_argument("--register-hopsworks", action="store_true")
->>>>>>> Stashed changes
     args = parser.parse_args()
 
     
@@ -268,12 +257,6 @@ def main() -> None:
             "test_metrics_perfect_future_weather_DO_NOT_REPORT": metrics_leaky_eval,
             "leakage_r2_gap": round(metrics_leaky_eval["r2"] - metrics["r2"], 4),
         }
-        if args.register_hopsworks:
-            register_model_to_hopsworks(
-                run_dir=out_dir,
-                model_name=f"ridge_{label}_v6",
-                metrics=metrics,
-            )
         
         logger.info(
             "%s: realistic R2=%.4f RMSE=%.2f | perfect-future-weather R2=%.4f "
