@@ -35,7 +35,7 @@ def test_real_historical_data_is_selected_when_available(tmp_path, monkeypatch):
     frame, source = load_historical_data()
 
     assert not frame.empty
-    assert source == "Historical processed data"
+    assert source == "Historical + live processed data"
     assert len(frame) > 0
     assert frame["collection_timestamp"].is_monotonic_increasing
 
