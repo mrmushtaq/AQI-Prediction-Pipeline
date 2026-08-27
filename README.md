@@ -1,7 +1,9 @@
-# Pearls AQI Predictor — AQI Prediction System
+# Sukkur AQI Predictor — AQI Prediction System
 
 Production-grade data pipeline for the **AQI Prediction System**, built for
 the **10Pearls Shine Data Sciences Internship**.
+
+**🔗 Live demo:** [sukkur-aqi-predictor.streamlit.app](https://sukkur-aqi-predictor.streamlit.app/)
 
 Phase 1 implements the ingestion pipeline: automatically fetching weather
 and air-quality data from external APIs, validating it, and persisting raw
@@ -428,6 +430,10 @@ See [Section 15](#15-phase-5--model-training-pipeline) for details, options,
 and how results are evaluated.
 
 ### Forecast dashboard (Phase 6)
+
+**🔗 Hosted version (no setup required):** [sukkur-aqi-predictor.streamlit.app](https://sukkur-aqi-predictor.streamlit.app/)
+
+To run it locally instead:
 
 ```bash
 streamlit run src/dashboard/app.py
@@ -1318,6 +1324,9 @@ failure handling, and a fully end-to-end training run.
 ## 16. Phase 6 — Forecast Dashboard & Explainability
 
 `src/dashboard/` serves real-time next-3-day AQI forecasts and explains them.
+The hosted version is live at
+**[sukkur-aqi-predictor.streamlit.app](https://sukkur-aqi-predictor.streamlit.app/)**.
+
 It loads the **v6 daily-average models** (`ridge_3day_dailyavg_v6_*` in
 `data/model_registry/`) — three Ridge regressors trained on daily features
 (see below) that predict the **mean AQI over the next 1, 2, and 3 days**.
@@ -1407,6 +1416,9 @@ weather instead of assuming persistence.
 
 streamlit run src/dashboard/app.py
 ```
+
+Or skip local setup entirely and use the hosted version:
+**[sukkur-aqi-predictor.streamlit.app](https://sukkur-aqi-predictor.streamlit.app/)**
 
 The dashboard fetches live future weather on startup; on a transient API
 failure it degrades gracefully to archived/persistence weather and the
