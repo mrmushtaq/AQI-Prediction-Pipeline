@@ -16,10 +16,13 @@ import streamlit as st
 # defaults (e.g. HOPSWORKS_HOST silently defaulting to c.app.hopsworks.ai
 # instead of the configured eu-west.cloud.hopsworks.ai).
 try:
+    _secret_keys_found = list(st.secrets.keys())
     for _key, _value in st.secrets.items():
         os.environ.setdefault(_key, str(_value))
-except Exception:
-    pass  # No secrets.toml locally / secrets not configured -- fine, .env covers local runs.
+    print(f"[secrets-bridge] Keys found in st.secrets: {_secret_keys_found}", flush=True)
+    print(f"[secrets-bridge] HOPSWORKS_HOST after bridge: {os.getenv('HOPSWORKS_HOST', 'NOT SET')}", flush=True)
+except Exception as _exc:
+    print(f"[secrets-bridge] Failed: {type(_exc).__name__}: {_exc}", flush=True)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
