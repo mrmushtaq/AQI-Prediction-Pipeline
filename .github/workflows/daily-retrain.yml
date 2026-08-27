@@ -34,17 +34,16 @@ jobs:
           echo "===== pip freeze after install ====="
           pip freeze | grep -Ei "numpy|hsfs|hopsworks" || echo "none of numpy/hsfs/hopsworks found in pip freeze!"
 
-      # Same caveat as hourly-ingestion.yml -- see its comment for details.
-      - name: Restore data cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            data/raw
-            data/processed
-            data/metadata
-          key: aqi-data-${{ github.run_id }}
-          restore-keys: |
-            aqi-data-
+      # NOTE: the "Restore data cache" step that used to live here has been
+      # removed. aqi_dataset_historical.csv and feature_df.csv are now
+      # git-committed (durable via checkout, no eviction risk) -- but
+      # actions/cache restores INTO data/processed *after* checkout, which
+      # meant a stale/broken cached snapshot could silently overwrite the
+      # good, freshly-checked-out files. That's what caused this exact
+      # workflow to reproduce the "no daily row has complete feature
+      # history" bug even after the files were fixed and committed. Now
+      # that git is the source of truth for these files, the cache step
+      # was pure risk with no remaining benefit.
 
       - name: Compute yesterday's date range
         id: dates
@@ -69,6 +68,15 @@ jobs:
         run: |
           python -m src.feature_pipeline.historical_backfill \
             ${{ steps.dates.outputs.start }} ${{ steps.dates.outputs.end }}
+
+      - name: Sanity-check historical dataset size before rebuilding features
+        run: |
+          rows=$(($(wc -l < data/processed/aqi_dataset_historical.csv) - 1))
+          echo "aqi_dataset_historical.csv has $rows data rows"
+          if [ "$rows" -lt 720 ]; then
+            echo "::error::aqi_dataset_historical.csv only has $rows rows (<30 days worth) -- refusing to rebuild feature_df.csv from what looks like truncated data."
+            exit 1
+          fi
 
       - name: Rebuild engineered features
         env:
@@ -126,4 +134,3 @@ jobs:
             git commit -m "data: refresh historical features and v6 models"
             git push origin HEAD:${{ github.ref_name }}
           fi
-
