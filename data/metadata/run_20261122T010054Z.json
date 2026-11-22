@@ -1,0 +1,9 @@
+{
+  "run_time": "2026-11-22T01:00:54.977080+00:00",
+  "city": "Sukkur",
+  "weather_source": "OpenWeather",
+  "aqi_source": "AQICN-geo",
+  "records": 1,
+  "status": "SUCCESS",
+  "error": null
+}
